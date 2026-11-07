@@ -15,7 +15,7 @@ tested.
   `DELETE /organizations/{id}`, owner-only). `ARCHIVED` hides the org from
   `GET /auth/me` and makes it behave as non-existent (see §4).
 - A user may belong to many organizations; the frontend persists the last
-  selected one (`localStorage.bizgrow.current_org`) but re-validates it
+  selected one (`localStorage.YemomBizGrow.current_org`) but re-validates it
   against live memberships on every bootstrap.
 
 ## 2. Membership is the ONLY authorization source
@@ -42,7 +42,7 @@ gets **403** because the existence of the resource is already known to them.
 
 ## 3. Permission matrix
 
-Single source of truth: `com.bizgrow.membership.Permission` (an `EnumMap` of
+Single source of truth: `com.YemomBizGrow.membership.Permission` (an `EnumMap` of
 permission → allowed roles). Services ask
 `permission.allowedFor(role)` and never re-implement role checks inline. The
 frontend mirrors it in `src/lib/api/permissions.ts` for UI affordances only —

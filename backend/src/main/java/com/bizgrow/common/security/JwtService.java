@@ -1,7 +1,7 @@
-package com.bizgrow.common.security;
+package com.YemomBizGrow.common.security;
 
-import com.bizgrow.common.config.AppProperties;
-import com.bizgrow.common.exception.UnauthorizedException;
+import com.YemomBizGrow.common.config.AppProperties;
+import com.YemomBizGrow.common.exception.UnauthorizedException;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;

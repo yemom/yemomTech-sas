@@ -1,20 +1,20 @@
 # =============================================================
-# YemomTech (BizGrow) — DEVELOPMENT compose
+# YemomTech (YemomBizGrow) — DEVELOPMENT compose
 # Local development only. Never deploy this file as-is:
 #   - database/redis ports are published for local tooling
 #   - credentials come from .env (see .env.example)
 # Production runs on managed PostgreSQL/Redis (Render) with
 # private networking and no published database ports.
 # =============================================================
-name: bizgrow
+name: YemomBizGrow
 
 services:
   postgres:
     image: postgres:17-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-bizgrow}
-      POSTGRES_USER: ${POSTGRES_USER:-bizgrow_user}
+      POSTGRES_DB: ${POSTGRES_DB:-YemomBizGrow}
+      POSTGRES_USER: ${POSTGRES_USER:-YemomBizGrow_user}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-CHANGE_ME_strong_db_password}
     ports:
       - "5632:5432"
@@ -53,8 +53,8 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
       SERVER_PORT: ${APP_PORT:-8080}
-      DATABASE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-bizgrow}
-      DATABASE_USERNAME: ${POSTGRES_USER:-bizgrow_user}
+      DATABASE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-YemomBizGrow}
+      DATABASE_USERNAME: ${POSTGRES_USER:-YemomBizGrow_user}
       DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-CHANGE_ME_strong_db_password}
       REDIS_HOST: redis
       REDIS_PORT: "6379"

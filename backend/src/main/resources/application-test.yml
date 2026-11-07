@@ -5,9 +5,9 @@
 # =============================================================
 spring:
   datasource:
-    url: ${TEST_DATABASE_URL:jdbc:postgresql://localhost:5432/bizgrow_test}
-    username: ${TEST_DATABASE_USERNAME:bizgrow_test}
-    password: ${TEST_DATABASE_PASSWORD:bizgrow_test}
+    url: ${TEST_DATABASE_URL:jdbc:postgresql://localhost:5432/YemomBizGrow_test}
+    username: ${TEST_DATABASE_USERNAME:YemomBizGrow_test}
+    password: ${TEST_DATABASE_PASSWORD:YemomBizGrow_test}
   data:
     redis:
       host: ${TEST_REDIS_HOST:localhost}
@@ -31,6 +31,6 @@ app:
 logging:
   level:
     root: WARN
-    com.bizgrow: INFO
+    com.YemomBizGrow: INFO
     org.testcontainers: INFO
     org.flywaydb: INFO

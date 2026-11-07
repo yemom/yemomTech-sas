@@ -1,7 +1,7 @@
-package com.bizgrow.organization.dto;
+package com.YemomBizGrow.organization.dto;
 
-import com.bizgrow.organization.Organization;
-import com.bizgrow.organization.OrganizationStatus;
+import com.YemomBizGrow.organization.Organization;
+import com.YemomBizGrow.organization.OrganizationStatus;
 
 import java.time.Instant;
 import java.util.UUID;

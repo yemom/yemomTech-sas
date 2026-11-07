@@ -1,12 +1,12 @@
-package com.bizgrow.invitation;
+package com.YemomBizGrow.invitation;
 
-import com.bizgrow.common.response.PageResponse;
-import com.bizgrow.common.security.CurrentUser;
-import com.bizgrow.common.util.Pagination;
-import com.bizgrow.invitation.dto.CreateInvitationRequest;
-import com.bizgrow.invitation.dto.InvitationAcceptRequest;
-import com.bizgrow.invitation.dto.InvitationAcceptResponse;
-import com.bizgrow.invitation.dto.InvitationResponse;
+import com.YemomBizGrow.common.response.PageResponse;
+import com.YemomBizGrow.common.security.CurrentUser;
+import com.YemomBizGrow.common.util.Pagination;
+import com.YemomBizGrow.invitation.dto.CreateInvitationRequest;
+import com.YemomBizGrow.invitation.dto.InvitationAcceptRequest;
+import com.YemomBizGrow.invitation.dto.InvitationAcceptResponse;
+import com.YemomBizGrow.invitation.dto.InvitationResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;

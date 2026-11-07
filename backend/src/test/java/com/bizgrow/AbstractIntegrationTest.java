@@ -1,4 +1,4 @@
-package com.bizgrow;
+package com.YemomBizGrow;
 
 import org.assertj.core.api.Assertions;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -41,9 +41,9 @@ import java.util.UUID;
 public abstract class AbstractIntegrationTest {
 
     private static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:17-alpine")
-            .withDatabaseName("bizgrow_test")
-            .withUsername("bizgrow_test")
-            .withPassword("bizgrow_test");
+            .withDatabaseName("YemomBizGrow_test")
+            .withUsername("YemomBizGrow_test")
+            .withPassword("YemomBizGrow_test");
 
     // No official Redis module exists in Testcontainers; the generic container
     // with an exposed port is the documented approach.
@@ -142,8 +142,8 @@ public abstract class AbstractIntegrationTest {
     /** Rotates the refresh cookie and returns the resulting (new) session. */
     protected Session refresh(Session session) {
         HttpHeaders headers = new HttpHeaders();
-        headers.set(HttpHeaders.COOKIE, "bizgrow_refresh=" + session.refreshCookie()
-                + "; bizgrow_csrf=" + session.csrfCookie());
+        headers.set(HttpHeaders.COOKIE, "YemomBizGrow_refresh=" + session.refreshCookie()
+                + "; YemomBizGrow_csrf=" + session.csrfCookie());
         headers.set("X-CSRF-TOKEN", session.csrfToken());
         ResponseEntity<String> response = post("/api/v1/auth/refresh", null, headers);
         assertStatus(response, 200, "refresh");
@@ -153,8 +153,8 @@ public abstract class AbstractIntegrationTest {
     /** Posts to refresh/logout with an explicit cookie pair (for negative cases). */
     protected ResponseEntity<String> refreshWith(String refreshCookie, String csrfCookie, String csrfHeader) {
         HttpHeaders headers = new HttpHeaders();
-        headers.set(HttpHeaders.COOKIE, "bizgrow_refresh=" + refreshCookie
-                + "; bizgrow_csrf=" + csrfCookie);
+        headers.set(HttpHeaders.COOKIE, "YemomBizGrow_refresh=" + refreshCookie
+                + "; YemomBizGrow_csrf=" + csrfCookie);
         if (csrfHeader != null) {
             headers.set("X-CSRF-TOKEN", csrfHeader);
         }
@@ -163,8 +163,8 @@ public abstract class AbstractIntegrationTest {
 
     protected ResponseEntity<String> logout(Session session) {
         HttpHeaders headers = new HttpHeaders();
-        headers.set(HttpHeaders.COOKIE, "bizgrow_refresh=" + session.refreshCookie()
-                + "; bizgrow_csrf=" + session.csrfCookie());
+        headers.set(HttpHeaders.COOKIE, "YemomBizGrow_refresh=" + session.refreshCookie()
+                + "; YemomBizGrow_csrf=" + session.csrfCookie());
         headers.set("X-CSRF-TOKEN", session.csrfToken());
         return post("/api/v1/auth/logout", null, headers);
     }
@@ -175,8 +175,8 @@ public abstract class AbstractIntegrationTest {
         String csrfToken = jsonPath(body, "$.csrfToken");
         List<String> setCookies = response.getHeaders().get(HttpHeaders.SET_COOKIE);
         return new Session(accessToken, csrfToken,
-                cookieValue(setCookies, "bizgrow_refresh"),
-                cookieValue(setCookies, "bizgrow_csrf"));
+                cookieValue(setCookies, "YemomBizGrow_refresh"),
+                cookieValue(setCookies, "YemomBizGrow_csrf"));
     }
 
     private static String cookieValue(List<String> setCookies, String name) {

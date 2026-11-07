@@ -1,4 +1,4 @@
-package com.bizgrow.invitation.delivery;
+package com.YemomBizGrow.invitation.delivery;
 
 /**
  * Delivers an issued invitation to its recipient.

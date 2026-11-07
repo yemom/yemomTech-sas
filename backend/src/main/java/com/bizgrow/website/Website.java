@@ -1,6 +1,6 @@
-package com.bizgrow.website;
+package com.YemomBizGrow.website;
 
-import com.bizgrow.common.entity.TimestampedEntity;
+import com.YemomBizGrow.common.entity.TimestampedEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -20,7 +20,7 @@ import java.util.UUID;
  * A website registered by an organization (first vertical slice).
  *
  * <p>Metadata only: {@code url} was validated and normalized by
- * {@link com.bizgrow.common.util.WebsiteUrlNormalizer} but is never fetched —
+ * {@link com.YemomBizGrow.common.util.WebsiteUrlNormalizer} but is never fetched —
  * registration performs no outbound request, so it cannot be used for SSRF.
  * {@code domain} is unique per organization ({@code uq_websites_org_domain}).</p>
  */

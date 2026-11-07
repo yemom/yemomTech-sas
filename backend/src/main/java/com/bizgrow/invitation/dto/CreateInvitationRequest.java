@@ -1,6 +1,6 @@
-package com.bizgrow.invitation.dto;
+package com.YemomBizGrow.invitation.dto;
 
-import com.bizgrow.membership.MembershipRole;
+import com.YemomBizGrow.membership.MembershipRole;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;

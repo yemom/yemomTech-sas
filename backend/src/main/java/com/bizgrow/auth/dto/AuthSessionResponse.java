@@ -1,6 +1,6 @@
-package com.bizgrow.auth.dto;
+package com.YemomBizGrow.auth.dto;
 
-import com.bizgrow.user.dto.UserResponse;
+import com.YemomBizGrow.user.dto.UserResponse;
 
 /**
  * Response of register/login/refresh.

@@ -1,27 +1,28 @@
-package com.bizgrow.auth;
+package com.YemomBizGrow.auth;
 
-import com.bizgrow.audit.AuditAction;
-import com.bizgrow.audit.AuditService;
-import com.bizgrow.auth.dto.AuthSessionResponse;
-import com.bizgrow.auth.dto.LoginRequest;
-import com.bizgrow.auth.dto.MeResponse;
-import com.bizgrow.auth.dto.RegisterRequest;
-import com.bizgrow.auth.dto.SessionResult;
-import com.bizgrow.common.exception.ForbiddenException;
-import com.bizgrow.common.exception.NotFoundException;
-import com.bizgrow.common.exception.UnauthorizedException;
-import com.bizgrow.common.security.AuthenticatedUser;
-import com.bizgrow.common.security.CurrentUser;
-import com.bizgrow.common.security.JwtService;
-import com.bizgrow.common.util.TokenHasher;
-import com.bizgrow.membership.MembershipService;
-import com.bizgrow.membership.OrganizationMembership;
-import com.bizgrow.organization.Organization;
-import com.bizgrow.organization.OrganizationReadService;
-import com.bizgrow.organization.OrganizationStatus;
-import com.bizgrow.user.User;
-import com.bizgrow.user.UserService;
-import com.bizgrow.user.dto.UserResponse;
+import com.YemomBizGrow.audit.AuditAction;
+import com.YemomBizGrow.audit.AuditService;
+import com.YemomBizGrow.auth.dto.AuthSessionResponse;
+import com.YemomBizGrow.auth.dto.LoginRequest;
+import com.YemomBizGrow.auth.dto.MeResponse;
+import com.YemomBizGrow.auth.dto.RegisterRequest;
+import com.YemomBizGrow.auth.dto.SessionResult;
+import com.YemomBizGrow.common.exception.ForbiddenException;
+import com.YemomBizGrow.common.exception.NotFoundException;
+import com.YemomBizGrow.common.exception.UnauthorizedException;
+import com.YemomBizGrow.common.security.AuthenticatedUser;
+import com.YemomBizGrow.common.security.CurrentUser;
+import com.YemomBizGrow.common.security.JwtService;
+import com.YemomBizGrow.common.util.TokenHasher;
+import com.YemomBizGrow.membership.MembershipService;
+import com.YemomBizGrow.membership.OrganizationMembership;
+import com.YemomBizGrow.organization.Organization;
+import com.YemomBizGrow.organization.OrganizationReadService;
+import com.YemomBizGrow.organization.OrganizationStatus;
+import com.YemomBizGrow.user.User;
+import com.YemomBizGrow.user.UserService;
+import com.YemomBizGrow.user.UserStatus;
+import com.YemomBizGrow.user.dto.UserResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -37,20 +38,8 @@ import java.util.stream.Collectors;
 
 /**
  * Authentication use cases: registration, login, refresh (with rotation and
- * reuse detection), logout, and the current-user view.
- *
- * <p>Session model (full detail in docs/AUTHENTICATION_AND_SECURITY.md):
- * <pre>
- * access token  = short-lived JWT, response body, frontend memory, Authorization header
- * refresh token = opaque random string, HttpOnly cookie, SHA-256 only in DB
- * CSRF token    = double-submit value, readable cookie, X-CSRF-TOKEN header on
- *                 cookie-authenticated endpoints (refresh/logout)
- * </pre>
- *
- * <p>Error-message policy: login failures for unknown e-mail and wrong password are
- * byte-identical ("Invalid email or password.") so the API cannot be used to
- * enumerate registered addresses. Account-disabled is only revealed AFTER correct
- * credentials — an attacker without the password learns nothing.</p>
+ * reuse detection), logout, session management, email verification, password reset,
+ * and current-user state.
  */
 @Service
 public class AuthService {
@@ -61,6 +50,7 @@ public class AuthService {
     private final RefreshTokenService refreshTokens;
     private final JwtService jwtService;
     private final LoginThrottleService throttle;
+    private final UserTokenService userTokenService;
     private final MembershipService membershipService;
     private final OrganizationReadService organizationReadService;
     private final AuditService auditService;
@@ -69,6 +59,7 @@ public class AuthService {
                        RefreshTokenService refreshTokens,
                        JwtService jwtService,
                        LoginThrottleService throttle,
+                       UserTokenService userTokenService,
                        MembershipService membershipService,
                        OrganizationReadService organizationReadService,
                        AuditService auditService) {
@@ -76,6 +67,7 @@ public class AuthService {
         this.refreshTokens = refreshTokens;
         this.jwtService = jwtService;
         this.throttle = throttle;
+        this.userTokenService = userTokenService;
         this.membershipService = membershipService;
         this.organizationReadService = organizationReadService;
         this.auditService = auditService;
@@ -83,33 +75,38 @@ public class AuthService {
 
     /* ------------------------------- register ------------------------------- */
 
-    /**
-     * Creates the account and immediately establishes a session (the user goes
-     * straight to onboarding without a second login round-trip).
-     *
-     * @throws com.bizgrow.common.exception.ConflictException duplicate e-mail
-     */
     public SessionResult register(RegisterRequest request, String deviceInformation) {
         User user = userService.create(request);
         auditService.record(user.getId(), null, AuditAction.ACCOUNT_REGISTERED, "user", user.getId(), null);
+
+        // Issue initial verification token via email delivery
+        try {
+            userTokenService.issueEmailVerificationToken(user.getId(), user.getEmail());
+        } catch (Exception e) {
+            log.warn("Failed to dispatch initial verification email for {}: {}", user.getEmail(), e.getMessage());
+        }
+
         return issueSession(user, deviceInformation);
     }
 
     /* -------------------------------- login --------------------------------- */
 
     public SessionResult login(LoginRequest request, String deviceInformation) {
+        return login(request, deviceInformation, null);
+    }
+
+    public SessionResult login(LoginRequest request, String deviceInformation, String clientIp) {
         String email = UserService.normalizeEmail(request.email());
-        throttle.precheck(email);
+        throttle.precheck(email, clientIp);
 
         Optional<User> found = userService.findByEmail(email);
         if (found.isEmpty() || !userService.matchesPassword(found.get(), request.password())) {
-            throttle.recordFailure(email);
+            throttle.recordFailure(email, clientIp);
             throw new UnauthorizedException("Invalid email or password.");
         }
 
         User user = found.get();
-        if (user.getStatus() != com.bizgrow.user.UserStatus.ACTIVE) {
-            // Reached only with a CORRECT password: safe to explain the real reason.
+        if (user.getStatus() != UserStatus.ACTIVE && user.getStatus() != UserStatus.PENDING_VERIFICATION) {
             throw new ForbiddenException("This account is disabled. Please contact support.");
         }
 
@@ -120,18 +117,6 @@ public class AuthService {
 
     /* ------------------------------- refresh -------------------------------- */
 
-    /**
-     * Validates the presented refresh cookie, rotates it, and issues a new access
-     * token + new CSRF pair.
-     *
-     * <p>Reuse detection: a token that was already rotated (revoked) appearing again
-     * means the cookie value leaked (theft). The entire family is revoked — the
-     * legitimate session included — forcing a clean re-authentication, which is the
-     * only safe response when you cannot tell attacker from victim.</p>
-     *
-     * <p>Intentionally NOT wrapped in one outer transaction: the family-revocation
-     * write must survive the exception that follows it.</p>
-     */
     public SessionResult refresh(String rawRefreshToken, String csrfHeader, String csrfCookie,
                                  String deviceInformation) {
         validateCsrf(csrfHeader, csrfCookie);
@@ -155,7 +140,7 @@ public class AuthService {
             refreshTokens.revokeFamily(token.getFamilyId());
             throw new UnauthorizedException("Invalid session. Please sign in again.");
         }
-        if (user.getStatus() != com.bizgrow.user.UserStatus.ACTIVE) {
+        if (user.getStatus() != UserStatus.ACTIVE && user.getStatus() != UserStatus.PENDING_VERIFICATION) {
             refreshTokens.revokeFamily(token.getFamilyId());
             throw new UnauthorizedException("Account disabled. Please contact support.");
         }
@@ -166,16 +151,10 @@ public class AuthService {
 
     /* -------------------------------- logout -------------------------------- */
 
-    /**
-     * Revokes the presented refresh session (whole family). Safe to call repeatedly:
-     * missing/already-revoked tokens are no-ops, and the controller always clears
-     * cookies. CSRF is required only when a revocation would actually happen —
-     * a second logout after cookies were cleared still returns 204.
-     */
     public void logout(String rawRefreshToken, String csrfHeader, String csrfCookie) {
         Optional<RefreshToken> token = refreshTokens.findByRawToken(rawRefreshToken);
         if (token.isEmpty()) {
-            return; // Nothing to revoke (already logged out / cookie expired).
+            return;
         }
         validateCsrf(csrfHeader, csrfCookie);
         if (!token.get().isRevoked()) {
@@ -183,13 +162,61 @@ public class AuthService {
         }
     }
 
+    /* -------------------------- session revocation -------------------------- */
+
+    public void revokeOtherSessions(UUID userId, String rawCurrentRefreshToken) {
+        Optional<RefreshToken> current = refreshTokens.findByRawToken(rawCurrentRefreshToken);
+        if (current.isPresent()) {
+            refreshTokens.revokeOthersForUser(userId, current.get().getFamilyId());
+        } else {
+            refreshTokens.revokeAllForUser(userId);
+        }
+        auditService.record(userId, null, AuditAction.SESSIONS_REVOKED, "user", userId, null);
+    }
+
+    public void revokeAllSessions(UUID userId) {
+        refreshTokens.revokeAllForUser(userId);
+        auditService.record(userId, null, AuditAction.SESSIONS_REVOKED, "user", userId, null);
+    }
+
+    /* ------------------------- email verification -------------------------- */
+
+    public void resendVerificationEmail(UUID userId) {
+        User user = userService.getById(userId);
+        if (user.isEmailVerified()) {
+            return;
+        }
+        userTokenService.issueEmailVerificationToken(user.getId(), user.getEmail());
+    }
+
+    public void verifyEmail(String rawToken) {
+        UUID userId = userTokenService.verifyEmailToken(rawToken);
+        userService.verifyEmail(userId);
+        auditService.record(userId, null, AuditAction.ACCOUNT_EMAIL_VERIFIED, "user", userId, null);
+    }
+
+    /* --------------------------- password reset ----------------------------- */
+
+    public void forgotPassword(String email) {
+        Optional<User> found = userService.findByEmail(email);
+        if (found.isPresent()) {
+            User user = found.get();
+            if (user.getStatus() == UserStatus.ACTIVE || user.getStatus() == UserStatus.PENDING_VERIFICATION) {
+                userTokenService.issuePasswordResetToken(user.getId(), user.getEmail());
+            }
+        }
+        // Always finish cleanly without leaking whether the email exists
+    }
+
+    public void resetPassword(String rawToken, String newPassword) {
+        UUID userId = userTokenService.consumePasswordResetToken(rawToken);
+        userService.updatePassword(userId, newPassword);
+        refreshTokens.revokeAllForUser(userId);
+        auditService.record(userId, null, AuditAction.ACCOUNT_PASSWORD_RESET, "user", userId, null);
+    }
+
     /* ---------------------------------- me ----------------------------------- */
 
-    /**
-     * Session bootstrap for the frontend: the account plus every ACTIVE membership
-     * with its organization summary — read live from the database so suspended
-     * memberships or archived organizations cannot linger in the UI.
-     */
     public MeResponse me() {
         AuthenticatedUser principal = CurrentUser.require();
         User user = userService.getById(principal.id());
@@ -202,10 +229,10 @@ public class AuthService {
                 .map(membership -> {
                     Organization organization = organizations.get(membership.getOrganizationId());
                     if (organization == null) {
-                        return null; // org purged: hide instead of failing the whole payload
+                        return null;
                     }
                     if (organization.getStatus() == OrganizationStatus.ARCHIVED) {
-                        return null; // archived workspaces are closed: never offer them for re-entry
+                        return null;
                     }
                     return new MeResponse.MembershipBrief(
                             organization.getId(),
@@ -239,12 +266,6 @@ public class AuthService {
         return new SessionResult(session, rawRefreshToken, csrfToken);
     }
 
-    /**
-     * Double-submit CSRF check for cookie-authenticated endpoints: the request must
-     * echo, in {@code X-CSRF-TOKEN}, the value of the readable {@code bizgrow_csrf}
-     * cookie. A cross-site attacker can cause the cookie to be sent but can neither
-     * read it nor set a custom header on a CORS-preflighted request.
-     */
     private void validateCsrf(String headerValue, String cookieValue) {
         boolean headerPresent = headerValue != null && !headerValue.isBlank();
         boolean cookiePresent = cookieValue != null && !cookieValue.isBlank();

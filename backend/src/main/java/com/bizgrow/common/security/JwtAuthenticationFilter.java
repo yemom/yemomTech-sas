@@ -1,8 +1,8 @@
-package com.bizgrow.common.security;
+package com.YemomBizGrow.common.security;
 
-import com.bizgrow.user.User;
-import com.bizgrow.user.UserRepository;
-import com.bizgrow.user.UserStatus;
+import com.YemomBizGrow.user.User;
+import com.YemomBizGrow.user.UserRepository;
+import com.YemomBizGrow.user.UserStatus;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;

@@ -1,8 +1,8 @@
-package com.bizgrow.user;
+package com.YemomBizGrow.user;
 
-import com.bizgrow.common.exception.ConflictException;
-import com.bizgrow.common.exception.NotFoundException;
-import com.bizgrow.auth.dto.RegisterRequest;
+import com.YemomBizGrow.common.exception.ConflictException;
+import com.YemomBizGrow.common.exception.NotFoundException;
+import com.YemomBizGrow.auth.dto.RegisterRequest;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -41,10 +41,7 @@ public class UserService {
     /**
      * Creates an ACTIVE account with a BCrypt-hashed password.
      *
-     * @throws ConflictException when the e-mail is already registered (including
-     *                           the race between a duplicate check and insert,
-     *                           which the unique constraint converts into
-     *                           DataIntegrityViolationException)
+     * @throws ConflictException when the e-mail is already registered
      */
     @Transactional
     public User create(RegisterRequest request) {
@@ -59,9 +56,6 @@ public class UserService {
         user.setPasswordHash(passwordEncoder.encode(request.password()));
         user.setPhoneNumber(trimToNull(request.phoneNumber()));
         user.setStatus(UserStatus.ACTIVE);
-        // E-mail verification flow does not exist yet: accounts are usable
-        // immediately, and emailVerified=false is the marker that gates
-        // verification-required features when they ship.
         user.setEmailVerified(false);
         try {
             return userRepository.save(user);
@@ -105,6 +99,23 @@ public class UserService {
             user.setLastLoginAt(Instant.now());
             userRepository.save(user);
         });
+    }
+
+    @Transactional
+    public User verifyEmail(UUID userId) {
+        User user = getById(userId);
+        user.setEmailVerified(true);
+        if (user.getStatus() == UserStatus.PENDING_VERIFICATION) {
+            user.setStatus(UserStatus.ACTIVE);
+        }
+        return userRepository.save(user);
+    }
+
+    @Transactional
+    public void updatePassword(UUID userId, String rawNewPassword) {
+        User user = getById(userId);
+        user.setPasswordHash(passwordEncoder.encode(rawNewPassword));
+        userRepository.save(user);
     }
 
     private String trimToNull(String value) {

@@ -1,4 +1,4 @@
-package com.bizgrow.membership;
+package com.YemomBizGrow.membership;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;

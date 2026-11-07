@@ -1,10 +1,10 @@
-package com.bizgrow.membership;
+package com.YemomBizGrow.membership;
 
-import com.bizgrow.common.exception.ForbiddenException;
-import com.bizgrow.common.exception.NotFoundException;
-import com.bizgrow.organization.Organization;
-import com.bizgrow.organization.OrganizationReadService;
-import com.bizgrow.organization.OrganizationStatus;
+import com.YemomBizGrow.common.exception.ForbiddenException;
+import com.YemomBizGrow.common.exception.NotFoundException;
+import com.YemomBizGrow.organization.Organization;
+import com.YemomBizGrow.organization.OrganizationReadService;
+import com.YemomBizGrow.organization.OrganizationStatus;
 import org.springframework.stereotype.Service;
 
 import java.util.UUID;
@@ -21,13 +21,10 @@ import java.util.UUID;
  *       organization ids.</li>
  *   <li><b>Archived organizations leave the workspace.</b> Once soft-deleted,
  *       every org-scoped endpoint answers 404 (members get an explanatory
- *       message; non-members never reach that check, so existence stays hidden).
- *       This matches {@code listMine}, which already filters ARCHIVED rows out.</li>
- *   <li><b>Members lacking a permission get 403</b> (they already know the org
- *       exists; hiding that would just confuse legitimate users).</li>
+ *       message; non-members never reach that check, so existence stays hidden).</li>
+ *   <li><b>Members lacking a permission get 403.</b></li>
  * </ul>
- * The membership row is re-read from the database per operation — a revoked role
- * takes effect immediately, regardless of what any token or cached UI state says.</p>
+ * The membership row is re-read from the database per operation.</p>
  */
 @Service
 public class AccessControlService {
@@ -50,20 +47,26 @@ public class AccessControlService {
     /**
      * The standard tenant gate: ACTIVE membership + live (non-archived)
      * organization + permission from the matrix.
-     *
-     * @throws NotFoundException  not a member of this organization, or the
-     *                            organization has been archived (soft-deleted)
-     * @throws ForbiddenException member without the required permission
      */
     public OrganizationMembership requirePermission(UUID userId, UUID organizationId, Permission permission) {
-        // Membership first: a non-member gets the generic 404 even for an archived
-        // org, so probing cannot distinguish "archived" from "never existed".
         OrganizationMembership membership = requireActiveMembership(userId, organizationId);
         Organization organization = organizationReadService.get(organizationId);
         if (organization.getStatus() == OrganizationStatus.ARCHIVED) {
             throw new NotFoundException("This organization has been archived.");
         }
         if (!permission.allowedFor(membership.getRole())) {
+            throw ForbiddenException.defaultDenied();
+        }
+        return membership;
+    }
+
+    /**
+     * Specialized gate for restoring an archived organization.
+     * Only an active BUSINESS_OWNER can restore an archived organization.
+     */
+    public OrganizationMembership requireRestorePermission(UUID userId, UUID organizationId) {
+        OrganizationMembership membership = requireActiveMembership(userId, organizationId);
+        if (membership.getRole() != MembershipRole.BUSINESS_OWNER) {
             throw ForbiddenException.defaultDenied();
         }
         return membership;

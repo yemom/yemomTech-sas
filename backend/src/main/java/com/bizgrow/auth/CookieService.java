@@ -1,6 +1,6 @@
-package com.bizgrow.auth;
+package com.YemomBizGrow.auth;
 
-import com.bizgrow.common.config.AppProperties;
+import com.YemomBizGrow.common.config.AppProperties;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -17,10 +17,10 @@ import java.util.Optional;
  *
  * <p>Cookie policy (enforced here, documented in AUTHENTICATION_AND_SECURITY.md):
  * <ul>
- *   <li>{@code bizgrow_refresh} — HttpOnly (JavaScript can never read the refresh
+ *   <li>{@code YemomBizGrow_refresh} — HttpOnly (JavaScript can never read the refresh
  *       token), scoped to {@code /api/v1/auth} so it is not attached to ordinary
  *       API calls, SameSite per environment (Lax dev / None+Secure prod).</li>
- *   <li>{@code bizgrow_csrf} — readable by the frontend on purpose: it is the
+ *   <li>{@code YemomBizGrow_csrf} — readable by the frontend on purpose: it is the
  *       double-submit value echoed in {@code X-CSRF-TOKEN} for refresh/logout.</li>
  *   <li>Clearing uses identical attributes + Max-Age=0 so browsers reliably
  *       delete both cookies.</li>
@@ -29,8 +29,8 @@ import java.util.Optional;
 @Service
 public class CookieService {
 
-    public static final String REFRESH_COOKIE = "bizgrow_refresh";
-    public static final String CSRF_COOKIE = "bizgrow_csrf";
+    public static final String REFRESH_COOKIE = "YemomBizGrow_refresh";
+    public static final String CSRF_COOKIE = "YemomBizGrow_csrf";
     public static final String CSRF_HEADER = "X-CSRF-TOKEN";
     /** Cookie path = the auth surface only; ordinary /organizations/** requests never carry it. */
     private static final String COOKIE_PATH = "/api/v1/auth";

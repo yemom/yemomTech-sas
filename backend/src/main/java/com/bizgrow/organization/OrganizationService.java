@@ -1,28 +1,27 @@
-package com.bizgrow.organization;
+package com.YemomBizGrow.organization;
 
-import com.bizgrow.audit.AuditAction;
-import com.bizgrow.audit.AuditService;
-import com.bizgrow.common.exception.BadRequestException;
-import com.bizgrow.common.exception.ConflictException;
-import com.bizgrow.common.exception.NotFoundException;
-import com.bizgrow.common.util.SlugGenerator;
-import com.bizgrow.common.util.WebsiteUrlNormalizer;
-import com.bizgrow.membership.AccessControlService;
-import com.bizgrow.membership.MembershipRole;
-import com.bizgrow.membership.MembershipService;
-import com.bizgrow.organization.dto.CreateOrganizationRequest;
-import com.bizgrow.organization.dto.DashboardResponse;
-import com.bizgrow.organization.dto.OrganizationResponse;
-import com.bizgrow.organization.dto.UpdateOrganizationRequest;
-import com.bizgrow.website.WebsiteService;
-import com.bizgrow.website.dto.WebsiteResponse;
+import com.YemomBizGrow.audit.AuditAction;
+import com.YemomBizGrow.audit.AuditService;
+import com.YemomBizGrow.common.exception.BadRequestException;
+import com.YemomBizGrow.common.exception.ConflictException;
+import com.YemomBizGrow.common.exception.NotFoundException;
+import com.YemomBizGrow.common.util.SlugGenerator;
+import com.YemomBizGrow.common.util.WebsiteUrlNormalizer;
+import com.YemomBizGrow.membership.AccessControlService;
+import com.YemomBizGrow.membership.MembershipRole;
+import com.YemomBizGrow.membership.MembershipService;
+import com.YemomBizGrow.organization.dto.CreateOrganizationRequest;
+import com.YemomBizGrow.organization.dto.DashboardResponse;
+import com.YemomBizGrow.organization.dto.OrganizationResponse;
+import com.YemomBizGrow.organization.dto.UpdateOrganizationRequest;
+import com.YemomBizGrow.website.WebsiteService;
+import com.YemomBizGrow.website.dto.WebsiteResponse;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -30,20 +29,7 @@ import java.util.UUID;
 
 /**
  * Organization use cases: create (with owner membership atomically), list mine,
- * read, update, soft-delete (archive), and the workspace dashboard.
- *
- * <p>Tenant rules enforced here:
- * <ul>
- *   <li>Listing never scans the organizations table — it starts from the caller's
- *       ACTIVE memberships, so another tenant's row cannot appear even by id guess
- *       (reads additionally pass through {@link AccessControlService}, which turns
- *       non-membership into 404).</li>
- *   <li>Creation and the owner membership commit in ONE transaction: there is no
- *       state where an organization exists without its owner.</li>
- *   <li>Deletion is {@code ARCHIVED} (soft): business rows and audit history are
- *       retained; a documented future retention job may purge after the recovery
- *       window.</li>
- * </ul></p>
+ * read, update, soft-delete (archive), restore, and the workspace dashboard.
  */
 @Service
 public class OrganizationService {
@@ -85,17 +71,14 @@ public class OrganizationService {
         organization.setWebsiteUrl(normalizeOptionalWebsiteUrl(request.websiteUrl()));
         organization.setStatus(OrganizationStatus.ACTIVE);
         organization.setCreatedBy(actorId);
-        // country/currency/timezone come from entity defaults: ET / ETB / Africa/Addis_Ababa
 
         Organization saved;
         try {
             saved = organizationRepository.save(organization);
         } catch (DataIntegrityViolationException e) {
-            // Extremely unlikely slug race — surface as a conflict, not a 500.
             throw new ConflictException("Could not allocate a unique organization address. Please retry.");
         }
 
-        // Same transaction: no organization can exist without its owner.
         membershipService.create(saved.getId(), actorId, MembershipRole.BUSINESS_OWNER);
 
         auditService.record(actorId, saved.getId(), AuditAction.ORGANIZATION_CREATED,
@@ -105,7 +88,6 @@ public class OrganizationService {
 
     /* ---------------------------------- read ---------------------------------- */
 
-    /** Only organizations the caller actively belongs to (id existence proves nothing). */
     public List<OrganizationResponse> listMine(UUID actorId) {
         List<UUID> orgIds = membershipService.listActiveOrgIdsForUser(actorId);
         List<Organization> organizations = organizationReadFindMany(orgIds);
@@ -117,16 +99,12 @@ public class OrganizationService {
     }
 
     public OrganizationResponse get(UUID actorId, UUID organizationId) {
-        accessControl.requirePermission(actorId, organizationId, com.bizgrow.membership.Permission.ORG_VIEW);
+        accessControl.requirePermission(actorId, organizationId, com.YemomBizGrow.membership.Permission.ORG_VIEW);
         return toResponse(organizationRead(organizationId));
     }
 
-    /**
-     * Workspace dashboard: organization profile + counts + newest websites,
-     * all read live. One authorization gate, then internal reads.
-     */
     public DashboardResponse dashboard(UUID actorId, UUID organizationId) {
-        accessControl.requirePermission(actorId, organizationId, com.bizgrow.membership.Permission.ORG_VIEW);
+        accessControl.requirePermission(actorId, organizationId, com.YemomBizGrow.membership.Permission.ORG_VIEW);
         Organization organization = organizationRead(organizationId);
 
         long memberCount = membershipService.countActiveMembers(organizationId);
@@ -145,7 +123,7 @@ public class OrganizationService {
 
     @Transactional
     public OrganizationResponse update(UUID actorId, UUID organizationId, UpdateOrganizationRequest request) {
-        accessControl.requirePermission(actorId, organizationId, com.bizgrow.membership.Permission.ORG_UPDATE);
+        accessControl.requirePermission(actorId, organizationId, com.YemomBizGrow.membership.Permission.ORG_UPDATE);
         Organization organization = organizationRead(organizationId);
 
         List<String> changed = new ArrayList<>();
@@ -157,7 +135,6 @@ public class OrganizationService {
             if (!name.equals(organization.getName())) {
                 organization.setName(name);
                 changed.add("name");
-                // slug intentionally unchanged: external links must stay stable
             }
         }
         if (request.industry() != null) {
@@ -183,7 +160,7 @@ public class OrganizationService {
         }
 
         if (changed.isEmpty()) {
-            return toResponse(organization); // no-op PATCH still returns current state
+            return toResponse(organization);
         }
 
         Organization saved = organizationRepository.save(organization);
@@ -192,15 +169,14 @@ public class OrganizationService {
         return toResponse(saved);
     }
 
-    /* --------------------------------- delete --------------------------------- */
+    /* --------------------------------- delete / restore --------------------------------- */
 
-    /** Soft delete: status -> ARCHIVED, hidden from listings, data retained. */
     @Transactional
     public void archive(UUID actorId, UUID organizationId) {
-        accessControl.requirePermission(actorId, organizationId, com.bizgrow.membership.Permission.ORG_DELETE);
+        accessControl.requirePermission(actorId, organizationId, com.YemomBizGrow.membership.Permission.ORG_DELETE);
         Organization organization = organizationRead(organizationId);
         if (organization.getStatus() == OrganizationStatus.ARCHIVED) {
-            return; // unreachable via HTTP (the gate 404s archived orgs first); kept as a safety net
+            return;
         }
         organization.setStatus(OrganizationStatus.ARCHIVED);
         organizationRepository.save(organization);
@@ -208,12 +184,22 @@ public class OrganizationService {
                 "organization", organizationId, null);
     }
 
+    @Transactional
+    public OrganizationResponse restore(UUID actorId, UUID organizationId) {
+        accessControl.requireRestorePermission(actorId, organizationId);
+        Organization organization = organizationRead(organizationId);
+        if (organization.getStatus() != OrganizationStatus.ARCHIVED) {
+            return toResponse(organization);
+        }
+        organization.setStatus(OrganizationStatus.ACTIVE);
+        Organization saved = organizationRepository.save(organization);
+        auditService.record(actorId, organizationId, AuditAction.ORGANIZATION_RESTORED,
+                "organization", organizationId, null);
+        return toResponse(saved);
+    }
+
     /* ------------------------------- help rules ------------------------------- */
 
-    /**
-     * Unique slug: base + random suffix on collision (5 attempts). Randomness
-     * (not a per-row counter) means two concurrent creations rarely collide at all.
-     */
     private String generateUniqueSlug(String name) {
         String base = SlugGenerator.slugify(name);
         String candidate = base;

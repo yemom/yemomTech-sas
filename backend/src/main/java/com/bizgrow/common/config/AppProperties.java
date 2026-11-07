@@ -1,4 +1,4 @@
-package com.bizgrow.common.config;
+package com.YemomBizGrow.common.config;
 
 import lombok.Getter;
 import lombok.Setter;

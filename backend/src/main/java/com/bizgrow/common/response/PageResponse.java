@@ -1,4 +1,4 @@
-package com.bizgrow.common.response;
+package com.YemomBizGrow.common.response;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 

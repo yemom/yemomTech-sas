@@ -1,4 +1,4 @@
-package com.bizgrow.common.config;
+package com.YemomBizGrow.common.config;
 
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;

@@ -1,4 +1,4 @@
-package com.bizgrow.audit;
+package com.YemomBizGrow.audit;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;

@@ -1,7 +1,7 @@
-package com.bizgrow.common.util;
+package com.YemomBizGrow.common.util;
 
-import com.bizgrow.common.exception.BadRequestException;
-import com.bizgrow.common.util.WebsiteUrlNormalizer.NormalizedUrl;
+import com.YemomBizGrow.common.exception.BadRequestException;
+import com.YemomBizGrow.common.util.WebsiteUrlNormalizer.NormalizedUrl;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;

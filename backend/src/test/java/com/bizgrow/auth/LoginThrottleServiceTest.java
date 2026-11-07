@@ -1,7 +1,7 @@
-package com.bizgrow.auth;
+package com.YemomBizGrow.auth;
 
-import com.bizgrow.common.config.AppProperties;
-import com.bizgrow.common.util.TokenHasher;
+import com.YemomBizGrow.common.config.AppProperties;
+import com.YemomBizGrow.common.util.TokenHasher;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -11,16 +11,18 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
+import org.springframework.data.redis.core.script.RedisScript;
 
-import java.time.Duration;
-import java.util.UUID;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -51,7 +53,7 @@ class LoginThrottleServiceTest {
         when(valueOperations.get(anyString())).thenReturn("3");
 
         assertThatCode(() -> throttle.precheck("user@example.com"))
-                .isInstanceOfSatisfying(com.bizgrow.common.exception.TooManyRequestsException.class,
+                .isInstanceOfSatisfying(com.YemomBizGrow.common.exception.TooManyRequestsException.class,
                         e -> assertThat(e.getMessage()).contains("15 minutes"));
     }
 
@@ -62,6 +64,17 @@ class LoginThrottleServiceTest {
         when(valueOperations.get(anyString())).thenReturn("2");
 
         assertThatCode(() -> throttle.precheck("user@example.com")).doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("precheck blocks when IP attempt limit is exceeded")
+    void blocksWhenIpExhausted() {
+        when(redis.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.get(anyString())).thenReturn("65");
+
+        assertThatCode(() -> throttle.precheck("user@example.com", "198.51.100.42"))
+                .isInstanceOfSatisfying(com.YemomBizGrow.common.exception.TooManyRequestsException.class,
+                        e -> assertThat(e.getMessage()).contains("network"));
     }
 
     @Test
@@ -83,22 +96,23 @@ class LoginThrottleServiceTest {
     }
 
     @Test
-    @DisplayName("first failure creates the key with an expiry; later failures only increment")
-    void failureSetsWindowOnce() {
-        when(redis.opsForValue()).thenReturn(valueOperations);
-        when(valueOperations.increment(anyString())).thenReturn(1L);
+    @DisplayName("failure executes atomic script with key and TTL arguments for both email and IP")
+    void failureExecutesAtomicScript() {
+        throttle.recordFailure("user@example.com", "198.51.100.42");
 
-        throttle.recordFailure("user@example.com");
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<String>> keysCaptor = ArgumentCaptor.forClass(List.class);
+        verify(redis, times(2)).execute(any(RedisScript.class), keysCaptor.capture(), eq("900"));
 
-        ArgumentCaptor<String> keyCaptor = ArgumentCaptor.forClass(String.class);
-        verify(valueOperations).increment(keyCaptor.capture());
-        verify(redis).expire(eq(keyCaptor.getValue()), eq(Duration.ofMinutes(15)));
-
-        // The key must never contain the plain e-mail (data minimization in Redis dumps).
-        assertThat(keyCaptor.getValue())
+        List<List<String>> allInvocations = keysCaptor.getAllValues();
+        assertThat(allInvocations).hasSize(2);
+        assertThat(allInvocations.get(0).get(0))
                 .startsWith("auth:login:failures:")
                 .doesNotContain("user@example.com")
                 .endsWith(TokenHasher.sha256Hex("user@example.com"));
+        assertThat(allInvocations.get(1).get(0))
+                .startsWith("auth:login:ip:")
+                .endsWith(TokenHasher.sha256Hex("198.51.100.42"));
     }
 
     @Test
@@ -112,10 +126,9 @@ class LoginThrottleServiceTest {
     @Test
     @DisplayName("Redis failures during counting are swallowed, never propagated to the login flow")
     void recordFailureSwallowsOutage() {
-        when(redis.opsForValue()).thenReturn(valueOperations);
-        when(valueOperations.increment(anyString())).thenThrow(new RuntimeException("down"));
+        when(redis.execute(any(RedisScript.class), anyList(), anyString()))
+                .thenThrow(new RuntimeException("down"));
 
         assertThatCode(() -> throttle.recordFailure("user@example.com")).doesNotThrowAnyException();
-        verify(redis, never()).expire(anyString(), any(Duration.class));
     }
 }

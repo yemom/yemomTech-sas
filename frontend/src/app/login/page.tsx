@@ -48,7 +48,6 @@ function LoginForm() {
     try {
       await login(values.email, values.password, next ?? undefined);
     } catch (error) {
-      // 401 is deliberately generic on the backend — mirror that here.
       if (error instanceof ApiError && error.status === 401) {
         setFormError("Incorrect email or password.");
         return;
@@ -72,7 +71,7 @@ function LoginForm() {
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
           <Link href="/" className="text-lg font-bold tracking-tight text-teal-800">
-            Yemom<span className="text-slate-900">Tech</span>
+            Biz<span className="text-slate-900">Grow</span>
           </Link>
           <h1 className="mt-4 text-2xl font-bold text-slate-900">Welcome back</h1>
           <p className="mt-1 text-sm text-slate-500">Sign in to your workspace.</p>
@@ -105,6 +104,15 @@ function LoginForm() {
               {...register("password")}
             />
           </Field>
+
+          <div className="flex justify-end">
+            <Link
+              href="/forgot-password"
+              className="text-xs font-medium text-teal-700 hover:text-teal-800"
+            >
+              Forgot password?
+            </Link>
+          </div>
 
           <Button type="submit" loading={isSubmitting} className="w-full">
             {isSubmitting ? "Signing in…" : "Sign in"}

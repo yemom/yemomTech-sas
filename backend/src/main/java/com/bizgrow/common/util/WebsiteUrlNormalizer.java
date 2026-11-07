@@ -1,6 +1,6 @@
-package com.bizgrow.common.util;
+package com.YemomBizGrow.common.util;
 
-import com.bizgrow.common.exception.BadRequestException;
+import com.YemomBizGrow.common.exception.BadRequestException;
 
 import java.net.URI;
 import java.net.URISyntaxException;

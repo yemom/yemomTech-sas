@@ -8,7 +8,7 @@ export const metadata: Metadata = {
     template: "%s · YemomTech",
   },
   description:
-    "YemomTech (BizGrow) helps Ethiopian businesses manage their websites, teams and growth work in one secure workspace.",
+    "YemomTech (YemomBizGrow) helps Ethiopian businesses manage their websites, teams and growth work in one secure workspace.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -1,4 +1,4 @@
-package com.bizgrow.common.config;
+package com.YemomBizGrow.common.config;
 
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;

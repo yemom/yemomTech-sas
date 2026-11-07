@@ -1,12 +1,12 @@
-package com.bizgrow.membership;
+package com.YemomBizGrow.membership;
 
-import com.bizgrow.audit.AuditAction;
-import com.bizgrow.audit.AuditService;
-import com.bizgrow.common.exception.BadRequestException;
-import com.bizgrow.common.exception.ConflictException;
-import com.bizgrow.common.exception.ForbiddenException;
-import com.bizgrow.common.exception.NotFoundException;
-import com.bizgrow.membership.dto.MemberUpdateRequest;
+import com.YemomBizGrow.audit.AuditAction;
+import com.YemomBizGrow.audit.AuditService;
+import com.YemomBizGrow.common.exception.BadRequestException;
+import com.YemomBizGrow.common.exception.ConflictException;
+import com.YemomBizGrow.common.exception.ForbiddenException;
+import com.YemomBizGrow.common.exception.NotFoundException;
+import com.YemomBizGrow.membership.dto.MemberUpdateRequest;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;

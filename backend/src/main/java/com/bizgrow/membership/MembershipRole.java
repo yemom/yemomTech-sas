@@ -1,4 +1,4 @@
-package com.bizgrow.membership;
+package com.YemomBizGrow.membership;
 
 /**
  * Organization-scoped roles. Global platform administration (SUPER_ADMIN) is a

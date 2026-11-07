@@ -1,8 +1,8 @@
 {
-  "name": "bizgrow-frontend",
+  "name": "YemomBizGrow-frontend",
   "version": "0.1.0",
   "private": true,
-  "description": "YemomTech (BizGrow) web client — Next.js App Router",
+  "description": "YemomTech (YemomBizGrow) web client — Next.js App Router",
   "scripts": {
     "dev": "next dev --port 3001",
     "build": "next build",

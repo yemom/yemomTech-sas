@@ -1,6 +1,6 @@
-package com.bizgrow.auth.dto;
+package com.YemomBizGrow.auth.dto;
 
-import com.bizgrow.common.validation.StrongPassword;
+import com.YemomBizGrow.common.validation.StrongPassword;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;

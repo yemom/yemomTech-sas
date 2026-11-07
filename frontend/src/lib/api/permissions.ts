@@ -15,7 +15,10 @@ export type Capability =
   | "MEMBER_MANAGE"
   | "INVITE_MANAGE"
   | "WEBSITE_VIEW"
-  | "WEBSITE_MANAGE";
+  | "WEBSITE_MANAGE"
+  | "SEO_MANAGE"
+  | "LEAD_MANAGE"
+  | "ANALYTICS_VIEW";
 
 const ALL_ROLES: MembershipRole[] = [
   "BUSINESS_OWNER",
@@ -37,6 +40,9 @@ const MATRIX: Record<Capability, MembershipRole[]> = {
   INVITE_MANAGE: OWNER_ADMIN,
   WEBSITE_VIEW: ALL_ROLES,
   WEBSITE_MANAGE: [...OWNER_ADMIN, "MARKETING_MANAGER"],
+  SEO_MANAGE: [...OWNER_ADMIN, "MARKETING_MANAGER"],
+  LEAD_MANAGE: [...OWNER_ADMIN, "SALES_MANAGER", "SALES_AGENT"],
+  ANALYTICS_VIEW: ALL_ROLES,
 };
 
 export function can(role: MembershipRole, capability: Capability): boolean {

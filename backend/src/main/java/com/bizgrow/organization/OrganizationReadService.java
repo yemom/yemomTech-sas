@@ -1,7 +1,7 @@
-package com.bizgrow.organization;
+package com.YemomBizGrow.organization;
 
-import com.bizgrow.common.exception.BadRequestException;
-import com.bizgrow.common.exception.NotFoundException;
+import com.YemomBizGrow.common.exception.BadRequestException;
+import com.YemomBizGrow.common.exception.NotFoundException;
 import org.springframework.stereotype.Service;
 
 import java.util.Collection;

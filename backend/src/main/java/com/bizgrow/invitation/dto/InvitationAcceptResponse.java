@@ -1,6 +1,6 @@
-package com.bizgrow.invitation.dto;
+package com.YemomBizGrow.invitation.dto;
 
-import com.bizgrow.membership.MembershipRole;
+import com.YemomBizGrow.membership.MembershipRole;
 
 import java.util.UUID;
 

@@ -1,7 +1,7 @@
-package com.bizgrow.user.dto;
+package com.YemomBizGrow.user.dto;
 
-import com.bizgrow.user.User;
-import com.bizgrow.user.UserStatus;
+import com.YemomBizGrow.user.User;
+import com.YemomBizGrow.user.UserStatus;
 
 import java.time.Instant;
 import java.util.UUID;

@@ -1,8 +1,8 @@
-package com.bizgrow.auth.dto;
+package com.YemomBizGrow.auth.dto;
 
-import com.bizgrow.membership.MembershipRole;
-import com.bizgrow.organization.OrganizationStatus;
-import com.bizgrow.user.dto.UserResponse;
+import com.YemomBizGrow.membership.MembershipRole;
+import com.YemomBizGrow.organization.OrganizationStatus;
+import com.YemomBizGrow.user.dto.UserResponse;
 
 import java.util.List;
 import java.util.UUID;

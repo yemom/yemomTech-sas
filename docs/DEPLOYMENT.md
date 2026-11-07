@@ -31,7 +31,7 @@ managed services with private networking and no published ports.
 
 | Component | Build | Output |
 | --- | --- | --- |
-| Backend | `./mvnw -B clean package` (skips ITs: `-DskipITs` if desired) | `bizgrow-backend-*.jar` — run with `java -jar` |
+| Backend | `./mvnw -B clean package` (skips ITs: `-DskipITs` if desired) | `YemomBizGrow-backend-*.jar` — run with `java -jar` |
 | Frontend | `npm ci && npm run build` | Next production server (`npm start`) or static export per route |
 | Docker | `infrastructure/docker/{backend,frontend}.Dockerfile` | Multi-stage images referenced by compose |
 
@@ -46,6 +46,13 @@ default in base `application.yml`:
 
 | Variable | Production guidance |
 | --- | --- |
+| `ENCRYPTION_KEY` | Base64-encoded 32-byte AES key; `openssl rand -base64 32` |
+| `GOOGLE_CLIENT_ID` | Google Cloud OAuth 2.0 client ID |
+| `GOOGLE_CLIENT_SECRET` | Google Cloud OAuth 2.0 client secret |
+| `GOOGLE_REDIRECT_URI` | OAuth callback — `https://app.yourdomain.com/workspace/analytics/callback` |
+| `MAIL_HOST / MAIL_PORT` | SMTP relay hostname and port (e.g. SendGrid `smtp.sendgrid.net:587`) |
+| `MAIL_USERNAME / MAIL_PASSWORD` | SMTP credentials |
+| `MAIL_FROM / MAIL_FROM_NAME` | From address displayed in invitation and verification emails |
 | `SPRING_PROFILES_ACTIVE` | `prod` (no dev defaults, no `expose-dev-token`) |
 | `DATABASE_URL/USERNAME/PASSWORD` | Managed Postgres, TLS JDBC params (`?sslmode=require`) |
 | `REDIS_HOST/PORT/PASSWORD` | Managed Redis with auth + TLS |

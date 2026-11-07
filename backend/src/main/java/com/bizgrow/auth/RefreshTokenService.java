@@ -1,7 +1,7 @@
-package com.bizgrow.auth;
+package com.YemomBizGrow.auth;
 
-import com.bizgrow.common.config.AppProperties;
-import com.bizgrow.common.util.TokenHasher;
+import com.YemomBizGrow.common.config.AppProperties;
+import com.YemomBizGrow.common.util.TokenHasher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -64,6 +64,18 @@ public class RefreshTokenService {
         repository.revokeFamily(familyId, Instant.now());
     }
 
+    /** Invalidates all sessions belonging to the user. */
+    @Transactional
+    public int revokeAllForUser(UUID userId) {
+        return repository.revokeAllForUser(userId, Instant.now());
+    }
+
+    /** Invalidates all sessions belonging to the user except the specified family. */
+    @Transactional
+    public int revokeOthersForUser(UUID userId, UUID keepFamilyId) {
+        return repository.revokeOthersForUser(userId, keepFamilyId, Instant.now());
+    }
+
     public Optional<RefreshToken> findByRawToken(String rawToken) {
         if (rawToken == null || rawToken.isBlank()) {
             return Optional.empty();
@@ -98,8 +110,8 @@ public class RefreshTokenService {
     /**
      * @param id           persisted token id
      * @param familyId     session family
-     * @param rawToken     raw value for the cookie — NEVER persisted or logged
-     * @param expiresAt    absolute expiry (UTC)
+     * @param rawToken     value sent to the client (NEVER persisted)
+     * @param expiresAt    wall-clock expiry
      */
     public record IssuedToken(UUID id, UUID familyId, String rawToken, Instant expiresAt) {
     }

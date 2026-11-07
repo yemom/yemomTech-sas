@@ -1,7 +1,7 @@
-package com.bizgrow.auth;
+package com.YemomBizGrow.auth;
 
-import com.bizgrow.common.config.AppProperties;
-import com.bizgrow.common.util.TokenHasher;
+import com.YemomBizGrow.common.config.AppProperties;
+import com.YemomBizGrow.common.util.TokenHasher;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

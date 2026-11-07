@@ -1,7 +1,7 @@
-package com.bizgrow.membership.dto;
+package com.YemomBizGrow.membership.dto;
 
-import com.bizgrow.membership.MembershipRole;
-import com.bizgrow.membership.MembershipStatus;
+import com.YemomBizGrow.membership.MembershipRole;
+import com.YemomBizGrow.membership.MembershipStatus;
 
 /**
  * PATCH /api/v1/organizations/{organizationId}/members/{memberId}.

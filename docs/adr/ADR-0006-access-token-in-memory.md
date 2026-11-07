@@ -15,7 +15,7 @@
   - **CSRF: double-submit** — a non-HttpOnly `csrf` cookie echoed in the
     `X-CSRF-TOKEN` header on the two cookie-authenticated endpoints
     (refresh, logout); the frontend mirrors the value to
-    `localStorage.bizgrow_csrf` purely to echo it (useless without the
+    `localStorage.YemomBizGrow_csrf` purely to echo it (useless without the
     HttpOnly cookie).
   - On 401: one refresh (single-flight + Web Locks) → one retry; a
     terminal failure raises an `ended` session event and the app drops to

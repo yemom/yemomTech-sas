@@ -1,11 +1,11 @@
-package com.bizgrow.website;
+package com.YemomBizGrow.website;
 
-import com.bizgrow.common.response.PageResponse;
-import com.bizgrow.common.security.CurrentUser;
-import com.bizgrow.common.util.Pagination;
-import com.bizgrow.website.dto.CreateWebsiteRequest;
-import com.bizgrow.website.dto.UpdateWebsiteRequest;
-import com.bizgrow.website.dto.WebsiteResponse;
+import com.YemomBizGrow.common.response.PageResponse;
+import com.YemomBizGrow.common.security.CurrentUser;
+import com.YemomBizGrow.common.util.Pagination;
+import com.YemomBizGrow.website.dto.CreateWebsiteRequest;
+import com.YemomBizGrow.website.dto.UpdateWebsiteRequest;
+import com.YemomBizGrow.website.dto.WebsiteResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;

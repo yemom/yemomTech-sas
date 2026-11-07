@@ -1,6 +1,6 @@
-package com.bizgrow.organization;
+package com.YemomBizGrow.organization;
 
-import com.bizgrow.common.entity.TimestampedEntity;
+import com.YemomBizGrow.common.entity.TimestampedEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;

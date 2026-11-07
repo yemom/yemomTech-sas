@@ -4,27 +4,33 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Badge, Button } from "@/components/ui";
+import { useResendVerification } from "@/lib/api/hooks";
 import { ROLE_LABELS } from "@/lib/api/permissions";
 import { useAuth } from "@/lib/auth/auth-context";
 
 const NAV_ITEMS = [
   { href: "/workspace", label: "Dashboard" },
   { href: "/workspace/websites", label: "Websites" },
+  { href: "/workspace/analytics", label: "Analytics" },
+  { href: "/workspace/leads", label: "Leads & CRM" },
+  { href: "/workspace/ai", label: "AI Insights & Bot" },
   { href: "/workspace/members", label: "Members" },
   { href: "/workspace/invitations", label: "Invitations" },
+  { href: "/workspace/audit-logs", label: "Activity" },
   { href: "/workspace/settings", label: "Settings" },
 ];
 
-/** Authenticated app frame: org switcher, primary nav, account menu. */
+/** Authenticated app frame: org switcher, primary nav, account menu, verification banner. */
 export function WorkspaceShell({ children }: { children: ReactNode }) {
   const { user, memberships, currentOrg, selectOrg, logout } = useAuth();
   const pathname = usePathname();
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
+  const [resendStatus, setResendStatus] = useState<string | null>(null);
   const switcherRef = useRef<HTMLDivElement>(null);
   const accountRef = useRef<HTMLDivElement>(null);
+  const resendMutation = useResendVerification();
 
-  // Close popovers on outside click.
   useEffect(() => {
     function onPointerDown(event: MouseEvent) {
       if (switcherRef.current && !switcherRef.current.contains(event.target as Node)) {
@@ -38,8 +44,14 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
     return () => document.removeEventListener("mousedown", onPointerDown);
   }, []);
 
-  // Popovers also close on any in-app navigation (handled in the link/menu
-  // click handlers below — no effect needed).
+  const handleResendVerification = async () => {
+    try {
+      await resendMutation.mutateAsync();
+      setResendStatus("Verification email sent! Check your inbox.");
+    } catch {
+      setResendStatus("Failed to dispatch verification email. Try again shortly.");
+    }
+  };
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -47,7 +59,7 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
           <div className="flex items-center gap-4">
             <Link href="/workspace" className="font-bold tracking-tight text-teal-800">
-              Yemom<span className="text-slate-900">Tech</span>
+              Biz<span className="text-slate-900">Grow</span>
             </Link>
 
             {/* Organization switcher */}
@@ -174,6 +186,21 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
           </ul>
         </nav>
       </header>
+
+      {user && !user.emailVerified && (
+        <div className="bg-blue-50 px-4 py-2.5 text-center text-sm text-blue-900 border-b border-blue-200 flex flex-wrap items-center justify-center gap-2">
+          <span>Please verify your email address (<strong>{user.email}</strong>) to secure your account.</span>
+          <button
+            type="button"
+            onClick={handleResendVerification}
+            disabled={resendMutation.isPending}
+            className="underline font-semibold hover:text-blue-700 cursor-pointer ml-1"
+          >
+            {resendMutation.isPending ? "Sending…" : "Resend verification link"}
+          </button>
+          {resendStatus && <span className="ml-2 font-medium text-blue-800">({resendStatus})</span>}
+        </div>
+      )}
 
       {currentOrg?.status === "SUSPENDED" && (
         <div className="bg-amber-50 px-4 py-2.5 text-center text-sm text-amber-800 ring-1 ring-inset ring-amber-200">

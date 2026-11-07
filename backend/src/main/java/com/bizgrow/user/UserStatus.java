@@ -1,4 +1,4 @@
-package com.bizgrow.user;
+package com.YemomBizGrow.user;
 
 /**
  * Lifecycle of a user account. Account status is checked at login AND on every

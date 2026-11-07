@@ -1,7 +1,7 @@
-package com.bizgrow.invitation.dto;
+package com.YemomBizGrow.invitation.dto;
 
-import com.bizgrow.invitation.OrganizationInvitation;
-import com.bizgrow.membership.MembershipRole;
+import com.YemomBizGrow.invitation.OrganizationInvitation;
+import com.YemomBizGrow.membership.MembershipRole;
 
 import java.time.Instant;
 import java.util.UUID;

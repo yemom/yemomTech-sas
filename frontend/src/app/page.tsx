@@ -55,7 +55,7 @@ export default function LandingPage() {
             Run your business website and team from one secure workspace.
           </h1>
           <p className="mx-auto mt-5 max-w-2xl text-lg text-slate-600">
-            YemomTech (BizGrow) gives Ethiopian businesses a shared workspace for
+            YemomTech (YemomBizGrow) gives Ethiopian businesses a shared workspace for
             websites, team members and the work that grows the business — with
             roles, audit trails and honest reporting built in.
           </p>
@@ -86,7 +86,7 @@ export default function LandingPage() {
 
       <footer className="border-t border-slate-200">
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-2 px-6 py-6 text-sm text-slate-500 sm:flex-row">
-          <span>YemomTech (BizGrow)</span>
+          <span>YemomTech (YemomBizGrow)</span>
           <span>Addis Ababa, Ethiopia · Africa/Addis_Ababa</span>
         </div>
       </footer>

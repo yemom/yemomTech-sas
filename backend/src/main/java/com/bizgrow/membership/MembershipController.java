@@ -1,12 +1,12 @@
-package com.bizgrow.membership;
+package com.YemomBizGrow.membership;
 
-import com.bizgrow.common.response.PageResponse;
-import com.bizgrow.common.security.CurrentUser;
-import com.bizgrow.common.util.Pagination;
-import com.bizgrow.membership.dto.MemberResponse;
-import com.bizgrow.membership.dto.MemberUpdateRequest;
-import com.bizgrow.user.UserService;
-import com.bizgrow.user.User;
+import com.YemomBizGrow.common.response.PageResponse;
+import com.YemomBizGrow.common.security.CurrentUser;
+import com.YemomBizGrow.common.util.Pagination;
+import com.YemomBizGrow.membership.dto.MemberResponse;
+import com.YemomBizGrow.membership.dto.MemberUpdateRequest;
+import com.YemomBizGrow.user.UserService;
+import com.YemomBizGrow.user.User;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;

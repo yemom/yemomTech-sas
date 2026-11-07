@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -126,6 +127,9 @@ export default function WebsitesPage() {
                   {mayManage && (
                     <td className="px-4 py-3 text-right">
                       <div className="inline-flex gap-1">
+                        <Link href={`/workspace/websites/${site.id}/audits`}>
+                          <Button variant="ghost">Audits</Button>
+                        </Link>
                         <Button variant="ghost" onClick={() => setEditing(site)}>
                           Edit
                         </Button>

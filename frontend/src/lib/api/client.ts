@@ -18,7 +18,7 @@ import type { AuthSession, ErrorBody } from "./types";
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8082/api/v1";
 
-const CSRF_STORAGE_KEY = "bizgrow_csrf";
+const CSRF_STORAGE_KEY = "YemomBizGrow_csrf";
 
 /* ------------------------------ errors ------------------------------ */
 
@@ -61,7 +61,7 @@ function hydrate(): void {
   if (hydrated || typeof window === "undefined") return;
   hydrated = true;
   try {
-    csrfToken = window.localStorage.getItem(CSRF_STORAGE_KEY) ?? readCookie("bizgrow_csrf");
+    csrfToken = window.localStorage.getItem(CSRF_STORAGE_KEY) ?? readCookie("YemomBizGrow_csrf");
   } catch {
     /* storage disabled (private mode): fall through, login will set it anyway */
   }
@@ -82,7 +82,7 @@ export function getAccessToken(): string | null {
 
 export function getCsrfToken(): string | null {
   hydrate();
-  return csrfToken ?? readCookie("bizgrow_csrf");
+  return csrfToken ?? readCookie("YemomBizGrow_csrf");
 }
 
 /** Adopt a session returned by register/login/refresh. */
@@ -130,7 +130,7 @@ async function withCrossTabLock<T>(fn: () => Promise<T>): Promise<T> {
   // tabs can present the same refresh cookie simultaneously and the reuse
   // detector revokes the whole family (both logged out).
   if (typeof navigator !== "undefined" && navigator.locks?.request) {
-    return navigator.locks.request("bizgrow.session-refresh", fn) as Promise<T>;
+    return navigator.locks.request("YemomBizGrow.session-refresh", fn) as Promise<T>;
   }
   return fn();
 }
@@ -249,6 +249,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 export const api = {
   get: <T>(path: string) => request<T>(path),
   post: <T>(path: string, body?: unknown) => request<T>(path, { method: "POST", body }),
+  put: <T>(path: string, body?: unknown) => request<T>(path, { method: "PUT", body }),
   patch: <T>(path: string, body?: unknown) => request<T>(path, { method: "PATCH", body }),
   delete: <T>(path: string) => request<T>(path, { method: "DELETE" }),
   /** Credential endpoints: no bearer, no 401-retry (a 401 here is a real error). */

@@ -8,7 +8,7 @@
   transactions, deployment orchestration) is pure overhead before product
   fit is proven.
 - **Decision:** One Spring Boot deployable, structured as **modules with
-  enforced boundaries**: `com.bizgrow.<module>` owns its entities,
+  enforced boundaries**: `com.YemomBizGrow.<module>` owns its entities,
   repositories, services, and DTOs. Cross-module access goes through the
   target module's service — never its repository. Controllers stay thin;
   transactions live at the service boundary.

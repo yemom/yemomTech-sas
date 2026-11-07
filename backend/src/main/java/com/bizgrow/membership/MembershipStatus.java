@@ -1,4 +1,4 @@
-package com.bizgrow.membership;
+package com.YemomBizGrow.membership;
 
 /**
  * Membership lifecycle. Only ACTIVE memberships grant access; REMOVED rows are

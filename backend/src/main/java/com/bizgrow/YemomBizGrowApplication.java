@@ -1,10 +1,11 @@
-package com.bizgrow;
+package com.YemomBizGrow;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.scheduling.annotation.EnableAsync;
 
 /**
- * Entry point of the YemomTech (BizGrow) backend.
+ * Entry point of the YemomTech (YemomBizGrow) backend.
  *
  * <p>Architecture: <b>modular monolith</b>. One deployable Spring Boot application with
  * package-level module boundaries ({@code auth}, {@code organization}, {@code membership},
@@ -13,9 +14,10 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
  * extracted into a separate service later without rewriting business logic.</p>
  */
 @SpringBootApplication
-public class BizGrowApplication {
+@EnableAsync
+public class YemomBizGrowApplication {
 
     public static void main(String[] args) {
-        SpringApplication.run(BizGrowApplication.class, args);
+        SpringApplication.run(YemomBizGrowApplication.class, args);
     }
 }

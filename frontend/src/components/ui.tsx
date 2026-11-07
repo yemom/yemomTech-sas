@@ -166,12 +166,17 @@ export function Textarea({
 export function Card({
   children,
   className = "",
+  onClick,
 }: {
   children: ReactNode;
   className?: string;
+  onClick?: () => void;
 }) {
   return (
-    <div className={`rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200 ${className}`}>
+    <div
+      onClick={onClick}
+      className={`rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200 ${className}`}
+    >
       {children}
     </div>
   );
@@ -189,6 +194,26 @@ const BADGE_STYLES: Record<string, string> = {
   REVOKED: "bg-slate-100 text-slate-500 ring-slate-200",
   EXPIRED: "bg-rose-50 text-rose-600 ring-rose-200",
   ARCHIVED: "bg-slate-100 text-slate-600 ring-slate-200",
+  COMPLETED: "bg-emerald-50 text-emerald-700 ring-emerald-200",
+  RUNNING: "bg-amber-50 text-amber-700 ring-amber-200",
+  FAILED: "bg-rose-50 text-rose-700 ring-rose-200",
+  CRITICAL: "bg-rose-50 text-rose-700 ring-rose-200",
+  WARNING: "bg-amber-50 text-amber-700 ring-amber-200",
+  INFO: "bg-blue-50 text-blue-700 ring-blue-200",
+  SUCCESS: "bg-emerald-50 text-emerald-700 ring-emerald-200",
+  NEW: "bg-blue-50 text-blue-700 ring-blue-200",
+  CONTACTED: "bg-indigo-50 text-indigo-700 ring-indigo-200",
+  QUALIFIED: "bg-purple-50 text-purple-700 ring-purple-200",
+  PROPOSAL: "bg-amber-50 text-amber-700 ring-amber-200",
+  NEGOTIATION: "bg-cyan-50 text-cyan-700 ring-cyan-200",
+  WON: "bg-emerald-50 text-emerald-700 ring-emerald-200",
+  LOST: "bg-rose-50 text-rose-700 ring-rose-200",
+  HIGH: "bg-rose-50 text-rose-700 ring-rose-200",
+  MEDIUM: "bg-amber-50 text-amber-700 ring-amber-200",
+  LOW: "bg-blue-50 text-blue-700 ring-blue-200",
+  OPEN: "bg-teal-50 text-teal-700 ring-teal-200",
+  APPLIED: "bg-emerald-50 text-emerald-700 ring-emerald-200",
+  DISMISSED: "bg-slate-100 text-slate-500 ring-slate-200",
 };
 
 export function Badge({ status, children }: { status: string; children?: ReactNode }) {

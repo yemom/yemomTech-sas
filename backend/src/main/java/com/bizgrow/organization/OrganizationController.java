@@ -1,10 +1,10 @@
-package com.bizgrow.organization;
+package com.YemomBizGrow.organization;
 
-import com.bizgrow.common.security.CurrentUser;
-import com.bizgrow.organization.dto.CreateOrganizationRequest;
-import com.bizgrow.organization.dto.DashboardResponse;
-import com.bizgrow.organization.dto.OrganizationResponse;
-import com.bizgrow.organization.dto.UpdateOrganizationRequest;
+import com.YemomBizGrow.common.security.CurrentUser;
+import com.YemomBizGrow.organization.dto.CreateOrganizationRequest;
+import com.YemomBizGrow.organization.dto.DashboardResponse;
+import com.YemomBizGrow.organization.dto.OrganizationResponse;
+import com.YemomBizGrow.organization.dto.UpdateOrganizationRequest;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -72,5 +72,11 @@ public class OrganizationController {
     public ResponseEntity<Void> archive(@PathVariable UUID organizationId) {
         organizationService.archive(CurrentUser.require().id(), organizationId);
         return ResponseEntity.noContent().build();
+    }
+
+    /** Restore an archived organization — owner only. */
+    @PostMapping("/{organizationId}/restore")
+    public ResponseEntity<OrganizationResponse> restore(@PathVariable UUID organizationId) {
+        return ResponseEntity.ok(organizationService.restore(CurrentUser.require().id(), organizationId));
     }
 }

@@ -1,4 +1,4 @@
-package com.bizgrow.auth;
+package com.YemomBizGrow.auth;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;

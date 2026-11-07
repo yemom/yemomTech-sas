@@ -1,6 +1,6 @@
-package com.bizgrow.common.security;
+package com.YemomBizGrow.common.security;
 
-import com.bizgrow.common.exception.UnauthorizedException;
+import com.YemomBizGrow.common.exception.UnauthorizedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 

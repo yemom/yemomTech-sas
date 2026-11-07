@@ -1,4 +1,4 @@
-package com.bizgrow.common.util;
+package com.YemomBizGrow.common.util;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;

@@ -1,9 +1,9 @@
-package com.bizgrow.membership.dto;
+package com.YemomBizGrow.membership.dto;
 
-import com.bizgrow.membership.MembershipRole;
-import com.bizgrow.membership.MembershipStatus;
-import com.bizgrow.membership.OrganizationMembership;
-import com.bizgrow.user.User;
+import com.YemomBizGrow.membership.MembershipRole;
+import com.YemomBizGrow.membership.MembershipStatus;
+import com.YemomBizGrow.membership.OrganizationMembership;
+import com.YemomBizGrow.user.User;
 
 import java.time.Instant;
 import java.util.UUID;

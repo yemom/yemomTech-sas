@@ -1,4 +1,4 @@
-package com.bizgrow.auth.dto;
+package com.YemomBizGrow.auth.dto;
 
 /**
  * Internal hand-off from AuthService to AuthController: the response body plus

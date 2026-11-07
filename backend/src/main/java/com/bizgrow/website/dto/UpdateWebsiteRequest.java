@@ -1,4 +1,4 @@
-package com.bizgrow.website.dto;
+package com.YemomBizGrow.website.dto;
 
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;

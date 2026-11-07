@@ -54,7 +54,7 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-const ORG_STORAGE_KEY = "bizgrow.current_org";
+const ORG_STORAGE_KEY = "YemomBizGrow.current_org";
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const router = useRouter();

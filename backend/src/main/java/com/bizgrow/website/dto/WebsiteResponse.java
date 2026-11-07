@@ -1,7 +1,7 @@
-package com.bizgrow.website.dto;
+package com.YemomBizGrow.website.dto;
 
-import com.bizgrow.website.Website;
-import com.bizgrow.website.WebsiteStatus;
+import com.YemomBizGrow.website.Website;
+import com.YemomBizGrow.website.WebsiteStatus;
 
 import java.time.Instant;
 import java.util.UUID;

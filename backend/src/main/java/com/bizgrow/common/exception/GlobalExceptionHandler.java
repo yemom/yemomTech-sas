@@ -1,6 +1,6 @@
-package com.bizgrow.common.exception;
+package com.YemomBizGrow.common.exception;
 
-import com.bizgrow.common.config.RequestTraceFilter;
+import com.YemomBizGrow.common.config.RequestTraceFilter;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import org.slf4j.Logger;

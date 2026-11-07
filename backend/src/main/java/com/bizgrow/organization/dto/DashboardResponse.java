@@ -1,6 +1,6 @@
-package com.bizgrow.organization.dto;
+package com.YemomBizGrow.organization.dto;
 
-import com.bizgrow.website.dto.WebsiteResponse;
+import com.YemomBizGrow.website.dto.WebsiteResponse;
 
 import java.util.List;
 

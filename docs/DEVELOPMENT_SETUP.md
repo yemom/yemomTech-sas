@@ -23,7 +23,7 @@ Maven is **not** installed separately — use the wrapper (`./mvnw` /
 | **3001** | Next.js dev server | 3000 held by wslrelay/docker |
 
 `.env` / `.env.example` already carry these values
-(`DATABASE_URL=jdbc:postgresql://127.0.0.1:5632/bizgrow`,
+(`DATABASE_URL=jdbc:postgresql://127.0.0.1:5632/YemomBizGrow`,
 `REDIS_PORT=6637`, `APP_PORT=8082` via run command,
 `NEXT_PUBLIC_API_BASE_URL=http://localhost:8082/api/v1`,
 `CORS_ALLOWED_ORIGINS=http://localhost:3001`). If your machine is free to
@@ -61,7 +61,7 @@ Full template with comments: [`.env.example`](../.env.example). Summary:
 
 | Variable | Purpose | Dev value |
 | --- | --- | --- |
-| `DATABASE_URL` / `DATABASE_USERNAME` / `DATABASE_PASSWORD` | Postgres JDBC + credentials | `jdbc:postgresql://127.0.0.1:5632/bizgrow` |
+| `DATABASE_URL` / `DATABASE_USERNAME` / `DATABASE_PASSWORD` | Postgres JDBC + credentials | `jdbc:postgresql://127.0.0.1:5632/YemomBizGrow` |
 | `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD` | Redis for login throttling | `127.0.0.1:6637`, empty password |
 | `JWT_SECRET` | HS256 signing key (≥ 32 bytes) | dev default in `application-dev.yml`; **generate your own**: `[Convert]::ToBase64String((1..64 | ForEach-Object {Get-Random -Maximum 256}))` |
 | `JWT_ACCESS_EXPIRATION_SECONDS` / `JWT_REFRESH_EXPIRATION_DAYS` | Token lifetimes | `900` / `30` |

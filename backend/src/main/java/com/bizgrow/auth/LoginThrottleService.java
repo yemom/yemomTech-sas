@@ -1,39 +1,46 @@
-package com.bizgrow.auth;
+package com.YemomBizGrow.auth;
 
-import com.bizgrow.common.config.AppProperties;
-import com.bizgrow.common.exception.TooManyRequestsException;
-import com.bizgrow.common.util.TokenHasher;
+import com.YemomBizGrow.common.config.AppProperties;
+import com.YemomBizGrow.common.exception.TooManyRequestsException;
+import com.YemomBizGrow.common.util.TokenHasher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
+import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Service;
 
-import java.time.Duration;
+import java.util.Collections;
 import java.util.Locale;
 
 /**
- * Login throttling backed by Redis (fixed window per normalized e-mail).
+ * Login throttling backed by Redis with atomic Lua script execution.
  *
- * <p>Design points:
+ * <p>Enforces:
  * <ul>
- *   <li>Keys hold {@code SHA-256(email)} — Redis operators and AOF/RDB dumps never
- *       contain plain e-mail addresses (data minimization).</li>
- *   <li>Counting is by e-mail, not IP: Ethiopian mobile users rotate IPs often, so
- *       IP-based limits would mostly punish legitimate users, while the account-keyed
- *       window directly protects credentials from password guessing.</li>
- *   <li><b>Fails open:</b> if Redis is unreachable, attempts are allowed and logged.
- *       Availability of authentication is preferred over strict throttling; the
- *       outage is loudly logged so operators notice. (Trade-off documented in
- *       AUTHENTICATION_AND_SECURITY.md.)</li>
- *   <li>The window counter is deleted on successful login so legitimate users who
- *       mistyped once start from a clean state.</li>
- * </ul></p>
+ *   <li>Account-based limit: {@code auth:login:failures:<sha256(email)>}</li>
+ *   <li>IP-based limit: {@code auth:login:ip:<sha256(ip)>} to protect against distributed brute force</li>
+ *   <li>Atomic rate limiting via Lua script (INCR + EXPIRE atomically, no TTL leak)</li>
+ *   <li>Safe fail-open policy when Redis is unavailable (availability over lockout)</li>
+ * </ul>
+ * </p>
  */
 @Service
 public class LoginThrottleService {
 
     private static final Logger log = LoggerFactory.getLogger(LoginThrottleService.class);
-    private static final String KEY_PREFIX = "auth:login:failures:";
+    private static final String EMAIL_KEY_PREFIX = "auth:login:failures:";
+    private static final String IP_KEY_PREFIX = "auth:login:ip:";
+    private static final int MAX_IP_ATTEMPTS = 60; // 60 attempts per window per IP
+
+    private static final RedisScript<Long> INCR_EXPIRE_SCRIPT = new DefaultRedisScript<>(
+            "local current = redis.call('INCR', KEYS[1]) " +
+            "if current == 1 then " +
+            "    redis.call('EXPIRE', KEYS[1], ARGV[1]) " +
+            "end " +
+            "return current",
+            Long.class
+    );
 
     private final StringRedisTemplate redis;
     private final AppProperties properties;
@@ -44,16 +51,30 @@ public class LoginThrottleService {
     }
 
     /**
-     * Call before verifying credentials.
+     * Call before verifying credentials. Checks both email and IP limits.
      *
      * @throws TooManyRequestsException when the window is exhausted
      */
     public void precheck(String normalizedEmail) {
+        precheck(normalizedEmail, null);
+    }
+
+    public void precheck(String normalizedEmail, String clientIp) {
         try {
-            String failures = redis.opsForValue().get(key(normalizedEmail));
-            if (failures != null && parseCount(failures) >= properties.getSecurity().getLogin().getMaxAttempts()) {
-                throw new TooManyRequestsException("Too many failed login attempts. Please try again in "
-                        + properties.getSecurity().getLogin().getWindowMinutes() + " minutes.");
+            if (clientIp != null && !clientIp.isBlank()) {
+                String ipFailures = redis.opsForValue().get(ipKey(clientIp));
+                if (ipFailures != null && parseCount(ipFailures) >= MAX_IP_ATTEMPTS) {
+                    throw new TooManyRequestsException("Too many requests from this network. Please try again in "
+                            + properties.getSecurity().getLogin().getWindowMinutes() + " minutes.");
+                }
+            }
+
+            if (normalizedEmail != null && !normalizedEmail.isBlank()) {
+                String failures = redis.opsForValue().get(emailKey(normalizedEmail));
+                if (failures != null && parseCount(failures) >= properties.getSecurity().getLogin().getMaxAttempts()) {
+                    throw new TooManyRequestsException("Too many failed login attempts. Please try again in "
+                            + properties.getSecurity().getLogin().getWindowMinutes() + " minutes.");
+                }
             }
         } catch (TooManyRequestsException e) {
             throw e;
@@ -62,7 +83,6 @@ public class LoginThrottleService {
         }
     }
 
-    /** Redis counters are strings; corrupted values count as zero rather than blocking logins. */
     private long parseCount(String value) {
         try {
             return Long.parseLong(value);
@@ -71,30 +91,48 @@ public class LoginThrottleService {
         }
     }
 
-    /** Call after a failed verification (wrong password OR unknown e-mail — both count). */
+    /** Call after a failed verification: atomically increments failure counts for email and IP. */
     public void recordFailure(String normalizedEmail) {
+        recordFailure(normalizedEmail, null);
+    }
+
+    public void recordFailure(String normalizedEmail, String clientIp) {
+        long ttlSeconds = properties.getSecurity().getLogin().getWindowMinutes() * 60L;
+        if (ttlSeconds <= 0) {
+            ttlSeconds = 900L;
+        }
         try {
-            String key = key(normalizedEmail);
-            Long count = redis.opsForValue().increment(key);
-            if (count != null && count == 1L) {
-                redis.expire(key, Duration.ofMinutes(properties.getSecurity().getLogin().getWindowMinutes()));
+            if (normalizedEmail != null && !normalizedEmail.isBlank()) {
+                String key = emailKey(normalizedEmail);
+                redis.execute(INCR_EXPIRE_SCRIPT, Collections.singletonList(key), String.valueOf(ttlSeconds));
+            }
+            if (clientIp != null && !clientIp.isBlank()) {
+                String key = ipKey(clientIp);
+                redis.execute(INCR_EXPIRE_SCRIPT, Collections.singletonList(key), String.valueOf(ttlSeconds));
             }
         } catch (RuntimeException e) {
             log.warn("Login throttle increment failed: {}", e.getMessage());
         }
     }
 
-    /** Call after successful authentication to reset the window. */
+    /** Call after successful authentication to reset the account window. */
     public void recordSuccess(String normalizedEmail) {
         try {
-            redis.delete(key(normalizedEmail));
+            if (normalizedEmail != null && !normalizedEmail.isBlank()) {
+                redis.delete(emailKey(normalizedEmail));
+            }
         } catch (RuntimeException e) {
             log.warn("Login throttle reset failed: {}", e.getMessage());
         }
     }
 
-    private String key(String normalizedEmail) {
+    private String emailKey(String normalizedEmail) {
         String hashed = TokenHasher.sha256Hex(normalizedEmail == null ? "" : normalizedEmail.toLowerCase(Locale.ROOT));
-        return KEY_PREFIX + hashed;
+        return EMAIL_KEY_PREFIX + hashed;
+    }
+
+    private String ipKey(String clientIp) {
+        String hashed = TokenHasher.sha256Hex(clientIp == null ? "" : clientIp.trim());
+        return IP_KEY_PREFIX + hashed;
     }
 }

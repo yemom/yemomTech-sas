@@ -1,4 +1,4 @@
-package com.bizgrow.auth.dto;
+package com.YemomBizGrow.auth.dto;
 
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;

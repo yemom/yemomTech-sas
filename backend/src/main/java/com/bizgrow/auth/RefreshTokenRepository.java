@@ -1,4 +1,4 @@
-package com.bizgrow.auth;
+package com.YemomBizGrow.auth;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
@@ -22,7 +22,17 @@ public interface RefreshTokenRepository extends JpaRepository<RefreshToken, UUID
     @Query("update RefreshToken t set t.revokedAt = :now where t.familyId = :familyId and t.revokedAt is null")
     int revokeFamily(@Param("familyId") UUID familyId, @Param("now") Instant now);
 
-    /** Housekeeping: drop long-expired rows (invoked by a scheduled job in a later phase). */
+    /** Revoke all active refresh tokens belonging to the given user. */
+    @Modifying
+    @Query("update RefreshToken t set t.revokedAt = :now where t.userId = :userId and t.revokedAt is null")
+    int revokeAllForUser(@Param("userId") UUID userId, @Param("now") Instant now);
+
+    /** Revoke all active refresh tokens for the user EXCEPT the specified family. */
+    @Modifying
+    @Query("update RefreshToken t set t.revokedAt = :now where t.userId = :userId and t.familyId <> :keepFamilyId and t.revokedAt is null")
+    int revokeOthersForUser(@Param("userId") UUID userId, @Param("keepFamilyId") UUID keepFamilyId, @Param("now") Instant now);
+
+    /** Housekeeping: drop long-expired rows. */
     @Modifying
     @Query("delete from RefreshToken t where t.expiresAt < :cutoff")
     int deleteExpiredBefore(@Param("cutoff") Instant cutoff);

@@ -1,18 +1,18 @@
-package com.bizgrow.auth;
+package com.YemomBizGrow.auth;
 
-import com.bizgrow.audit.AuditService;
-import com.bizgrow.auth.dto.LoginRequest;
-import com.bizgrow.auth.dto.SessionResult;
-import com.bizgrow.common.config.AppProperties;
-import com.bizgrow.common.exception.ForbiddenException;
-import com.bizgrow.common.exception.UnauthorizedException;
-import com.bizgrow.common.security.JwtService;
-import com.bizgrow.common.util.TokenHasher;
-import com.bizgrow.membership.MembershipService;
-import com.bizgrow.organization.OrganizationReadService;
-import com.bizgrow.user.User;
-import com.bizgrow.user.UserStatus;
-import com.bizgrow.user.UserService;
+import com.YemomBizGrow.audit.AuditService;
+import com.YemomBizGrow.auth.dto.LoginRequest;
+import com.YemomBizGrow.auth.dto.SessionResult;
+import com.YemomBizGrow.common.config.AppProperties;
+import com.YemomBizGrow.common.exception.ForbiddenException;
+import com.YemomBizGrow.common.exception.UnauthorizedException;
+import com.YemomBizGrow.common.security.JwtService;
+import com.YemomBizGrow.common.util.TokenHasher;
+import com.YemomBizGrow.membership.MembershipService;
+import com.YemomBizGrow.organization.OrganizationReadService;
+import com.YemomBizGrow.user.User;
+import com.YemomBizGrow.user.UserStatus;
+import com.YemomBizGrow.user.UserService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -25,6 +25,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -36,7 +37,7 @@ import static org.mockito.Mockito.when;
 /**
  * Auth flow rules that must never regress: generic login errors (no account
  * enumeration), disabled accounts revealed only to correct password holders,
- * CSRF on cookie endpoints, and reuse detection.
+ * CSRF on cookie endpoints, reuse detection, password reset, and verification.
  */
 @ExtendWith(MockitoExtension.class)
 class AuthServiceTest {
@@ -47,6 +48,7 @@ class AuthServiceTest {
     @Mock private RefreshTokenService refreshTokens;
     @Mock private JwtService jwtService;
     @Mock private LoginThrottleService throttle;
+    @Mock private UserTokenService userTokenService;
     @Mock private MembershipService membershipService;
     @Mock private OrganizationReadService organizationReadService;
     @Mock private AuditService auditService;
@@ -56,7 +58,7 @@ class AuthServiceTest {
     @BeforeEach
     void setUp() {
         authService = new AuthService(userService, refreshTokens, jwtService, throttle,
-                membershipService, organizationReadService, auditService);
+                userTokenService, membershipService, organizationReadService, auditService);
     }
 
     /* --------------------------------- login --------------------------------- */
@@ -64,8 +66,6 @@ class AuthServiceTest {
     @Test
     @DisplayName("unknown e-mail and wrong password return byte-identical errors")
     void loginErrorsDoNotEnumerateAccounts() {
-        // First stubbing must accept ANY e-mail: the unknown-account attempt uses
-        // a different address than the wrong-password attempt.
         when(userService.findByEmail(anyString())).thenReturn(Optional.empty());
         String unknownEmailMessage = loginFailureMessage("does-not-exist@example.et", "Whatever1!");
 
@@ -89,8 +89,8 @@ class AuthServiceTest {
                 new LoginRequest("  OWNER@Example.ET ", "Whatever1!"), "device"))
                 .isInstanceOf(UnauthorizedException.class);
 
-        verify(throttle).precheck(EMAIL);
-        verify(throttle).recordFailure(EMAIL);
+        verify(throttle).precheck(EMAIL, null);
+        verify(throttle).recordFailure(EMAIL, null);
     }
 
     @Test
@@ -104,8 +104,6 @@ class AuthServiceTest {
                 .isInstanceOf(ForbiddenException.class)
                 .hasMessageContaining("disabled");
 
-        // A disabled account must not leak its state through the failure counter,
-        // and no session may be issued.
         verify(throttle, never()).recordFailure(anyString());
         verify(refreshTokens, never()).issueNewFamily(any(), anyString());
     }
@@ -129,7 +127,7 @@ class AuthServiceTest {
         assertThat(result.session().expiresInSeconds()).isEqualTo(900);
         assertThat(result.refreshToken()).isEqualTo("raw-refresh");
         assertThat(result.csrfToken()).isNotBlank();
-        verify(throttle).precheck(EMAIL);
+        verify(throttle).precheck(EMAIL, null);
         verify(throttle).recordSuccess(EMAIL);
         verify(userService).markLogin(active.getId());
         verify(throttle, never()).recordFailure(anyString());
@@ -230,8 +228,7 @@ class AuthServiceTest {
     void logoutWithoutTokenIsNoOp() {
         when(refreshTokens.findByRawToken("raw")).thenReturn(Optional.empty());
 
-        org.assertj.core.api.Assertions.assertThatCode(
-                () -> authService.logout("raw", null, null)).doesNotThrowAnyException();
+        assertThatCode(() -> authService.logout("raw", null, null)).doesNotThrowAnyException();
 
         verify(refreshTokens, never()).revokeFamily(any());
     }
@@ -257,6 +254,51 @@ class AuthServiceTest {
                 .isInstanceOf(ForbiddenException.class);
 
         verify(refreshTokens, never()).revokeFamily(any());
+    }
+
+    /* ---------------------- verification & password reset ---------------------- */
+
+    @Test
+    @DisplayName("forgotPassword issues a reset token if user exists")
+    void forgotPasswordIssuesTokenWhenUserExists() {
+        User active = user(UserStatus.ACTIVE);
+        when(userService.findByEmail(EMAIL)).thenReturn(Optional.of(active));
+
+        authService.forgotPassword(EMAIL);
+
+        verify(userTokenService).issuePasswordResetToken(active.getId(), active.getEmail());
+    }
+
+    @Test
+    @DisplayName("forgotPassword does not fail or leak info if user does not exist")
+    void forgotPasswordSilentWhenUserNotFound() {
+        when(userService.findByEmail("nobody@example.et")).thenReturn(Optional.empty());
+
+        assertThatCode(() -> authService.forgotPassword("nobody@example.et")).doesNotThrowAnyException();
+        verify(userTokenService, never()).issuePasswordResetToken(any(), any());
+    }
+
+    @Test
+    @DisplayName("resetPassword updates password and revokes all sessions")
+    void resetPasswordUpdatesAndRevokesAllSessions() {
+        UUID userId = UUID.randomUUID();
+        when(userTokenService.consumePasswordResetToken("valid-token")).thenReturn(userId);
+
+        authService.resetPassword("valid-token", "NewStrongP@ss1");
+
+        verify(userService).updatePassword(userId, "NewStrongP@ss1");
+        verify(refreshTokens).revokeAllForUser(userId);
+    }
+
+    @Test
+    @DisplayName("verifyEmail updates user status and marks email verified")
+    void verifyEmailUpdatesStatus() {
+        UUID userId = UUID.randomUUID();
+        when(userTokenService.verifyEmailToken("valid-token")).thenReturn(userId);
+
+        authService.verifyEmail("valid-token");
+
+        verify(userService).verifyEmail(userId);
     }
 
     /* -------------------------------- helpers -------------------------------- */

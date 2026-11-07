@@ -1,4 +1,4 @@
-package com.bizgrow.organization;
+package com.YemomBizGrow.organization;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 

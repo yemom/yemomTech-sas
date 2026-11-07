@@ -1,25 +1,25 @@
-package com.bizgrow.invitation;
+package com.YemomBizGrow.invitation;
 
-import com.bizgrow.audit.AuditAction;
-import com.bizgrow.audit.AuditService;
-import com.bizgrow.common.config.AppProperties;
-import com.bizgrow.common.exception.BadRequestException;
-import com.bizgrow.common.exception.ConflictException;
-import com.bizgrow.common.exception.ForbiddenException;
-import com.bizgrow.common.exception.NotFoundException;
-import com.bizgrow.common.util.TokenHasher;
-import com.bizgrow.invitation.delivery.InvitationDelivery;
-import com.bizgrow.invitation.dto.CreateInvitationRequest;
-import com.bizgrow.invitation.dto.InvitationResponse;
-import com.bizgrow.membership.AccessControlService;
-import com.bizgrow.membership.MembershipRole;
-import com.bizgrow.membership.MembershipService;
-import com.bizgrow.membership.OrganizationMembership;
-import com.bizgrow.membership.Permission;
-import com.bizgrow.organization.Organization;
-import com.bizgrow.organization.OrganizationReadService;
-import com.bizgrow.user.User;
-import com.bizgrow.user.UserService;
+import com.YemomBizGrow.audit.AuditAction;
+import com.YemomBizGrow.audit.AuditService;
+import com.YemomBizGrow.common.config.AppProperties;
+import com.YemomBizGrow.common.exception.BadRequestException;
+import com.YemomBizGrow.common.exception.ConflictException;
+import com.YemomBizGrow.common.exception.ForbiddenException;
+import com.YemomBizGrow.common.exception.NotFoundException;
+import com.YemomBizGrow.common.util.TokenHasher;
+import com.YemomBizGrow.invitation.delivery.InvitationDelivery;
+import com.YemomBizGrow.invitation.dto.CreateInvitationRequest;
+import com.YemomBizGrow.invitation.dto.InvitationResponse;
+import com.YemomBizGrow.membership.AccessControlService;
+import com.YemomBizGrow.membership.MembershipRole;
+import com.YemomBizGrow.membership.MembershipService;
+import com.YemomBizGrow.membership.OrganizationMembership;
+import com.YemomBizGrow.membership.Permission;
+import com.YemomBizGrow.organization.Organization;
+import com.YemomBizGrow.organization.OrganizationReadService;
+import com.YemomBizGrow.user.User;
+import com.YemomBizGrow.user.UserService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
@@ -158,7 +158,7 @@ public class InvitationService {
      * All-or-nothing: invitation consumed + membership created in one transaction.
      */
     @Transactional
-    public com.bizgrow.invitation.dto.InvitationAcceptResponse accept(UUID acceptingUserId, String rawToken) {
+    public com.YemomBizGrow.invitation.dto.InvitationAcceptResponse accept(UUID acceptingUserId, String rawToken) {
         OrganizationInvitation invitation = invitationRepository
                 .findByInvitationTokenHash(TokenHasher.sha256Hex(rawToken))
                 .orElseThrow(() -> NotFoundException.resource("Invitation"));
@@ -197,7 +197,7 @@ public class InvitationService {
                 Map.of("role", invitation.getRole().name()));
 
         Organization joined = organizationReadService.get(invitation.getOrganizationId());
-        return new com.bizgrow.invitation.dto.InvitationAcceptResponse(
+        return new com.YemomBizGrow.invitation.dto.InvitationAcceptResponse(
                 joined.getId(), joined.getName(), joined.getSlug(), invitation.getRole());
     }
 

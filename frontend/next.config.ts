@@ -2,6 +2,8 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  // Enable standalone output for Docker deployment (copies only needed files)
+  output: "standalone",
   // The API base URL is the only runtime configuration the browser needs;
   // it must be a NEXT_PUBLIC_* variable (bundled, never a secret).
   env: {

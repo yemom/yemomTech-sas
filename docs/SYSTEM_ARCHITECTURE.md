@@ -1,6 +1,6 @@
 # System Architecture
 
-YemomTech (BizGrow) is a **modular monolith**: a single Spring Boot deployable
+YemomTech (YemomBizGrow) is a **modular monolith**: a single Spring Boot deployable
 whose packages are modules with explicit boundaries, paired with a Next.js
 frontend. This document describes the runtime structure; security details live
 in [AUTHENTICATION_AND_SECURITY.md](AUTHENTICATION_AND_SECURITY.md), tenant
@@ -34,7 +34,7 @@ PostgreSQL/Redis (see [DEPLOYMENT.md](DEPLOYMENT.md)).
 
 ## Module rules
 
-- Each module owns its package: `com.bizgrow.<module>` with `dto/` subpackage.
+- Each module owns its package: `com.YemomBizGrow.<module>` with `dto/` subpackage.
 - **Entities never cross the wire** — controllers accept/return DTO records
   only; mapping happens in the module's service.
 - Cross-module reads go through the target module's service
@@ -115,13 +115,13 @@ the same shape, produced by `GlobalExceptionHandler` /
   websites, members, invitations, settings).
 - **`lib/api/client.ts`** — single HTTP client: access token held in module
   memory (never `localStorage`), CSRF value mirrored to
-  `localStorage.bizgrow_csrf`, 401 → one refresh (single-flight per tab,
+  `localStorage.YemomBizGrow_csrf`, 401 → one refresh (single-flight per tab,
   Web Locks across tabs) → one retry, `ended` session event → anonymous.
 - **`lib/api/hooks.ts`** — TanStack Query hooks (query keys namespaced per
   org, mutations invalidate narrowly).
 - **`lib/auth/auth-context.tsx`** — session bootstrap (`/auth/login` or
   refresh → `/auth/me`), login/register/logout, current-org selection
-  (persisted in `localStorage.bizgrow.current_org`, validated against live
+  (persisted in `localStorage.YemomBizGrow.current_org`, validated against live
   memberships on every boot).
 - **`components/require-auth.tsx`** — route guard: unauthenticated →
   `/login?next=<path>` (same-app paths only, open-redirect guard).

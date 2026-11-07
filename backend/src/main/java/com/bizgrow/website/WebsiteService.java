@@ -1,16 +1,16 @@
-package com.bizgrow.website;
+package com.YemomBizGrow.website;
 
-import com.bizgrow.audit.AuditAction;
-import com.bizgrow.audit.AuditService;
-import com.bizgrow.common.exception.ConflictException;
-import com.bizgrow.common.exception.NotFoundException;
-import com.bizgrow.common.util.WebsiteUrlNormalizer;
-import com.bizgrow.membership.AccessControlService;
-import com.bizgrow.membership.Permission;
-import com.bizgrow.organization.OrganizationReadService;
-import com.bizgrow.website.dto.CreateWebsiteRequest;
-import com.bizgrow.website.dto.UpdateWebsiteRequest;
-import com.bizgrow.website.dto.WebsiteResponse;
+import com.YemomBizGrow.audit.AuditAction;
+import com.YemomBizGrow.audit.AuditService;
+import com.YemomBizGrow.common.exception.ConflictException;
+import com.YemomBizGrow.common.exception.NotFoundException;
+import com.YemomBizGrow.common.util.WebsiteUrlNormalizer;
+import com.YemomBizGrow.membership.AccessControlService;
+import com.YemomBizGrow.membership.Permission;
+import com.YemomBizGrow.organization.OrganizationReadService;
+import com.YemomBizGrow.website.dto.CreateWebsiteRequest;
+import com.YemomBizGrow.website.dto.UpdateWebsiteRequest;
+import com.YemomBizGrow.website.dto.WebsiteResponse;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -129,7 +129,7 @@ public class WebsiteService {
         if (request.name() != null) {
             String name = request.name().trim();
             if (name.isEmpty()) {
-                throw new com.bizgrow.common.exception.BadRequestException("Website name cannot be empty.");
+                throw new com.YemomBizGrow.common.exception.BadRequestException("Website name cannot be empty.");
             }
             website.setName(name);
         }

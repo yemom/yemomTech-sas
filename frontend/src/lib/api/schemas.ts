@@ -61,6 +61,22 @@ export const registerSchema = z.object({
 });
 export type RegisterInput = z.infer<typeof registerSchema>;
 
+export const forgotPasswordSchema = z.object({
+  email: emailSchema,
+});
+export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
+
+export const resetPasswordSchema = z.object({
+  token: z.string().min(1, "Reset token is required."),
+  newPassword: passwordSchema,
+});
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
+
+export const verifyEmailSchema = z.object({
+  token: z.string().min(1, "Verification token is required."),
+});
+export type VerifyEmailInput = z.infer<typeof verifyEmailSchema>;
+
 /* ----------------------------- organization ----------------------------- */
 
 export const organizationSchema = z.object({
@@ -105,3 +121,29 @@ export const acceptInviteSchema = z.object({
   token: z.string().min(1, "Invitation token is required."),
 });
 export type AcceptInviteInput = z.infer<typeof acceptInviteSchema>;
+
+
+/* ---------------------------------- crm ---------------------------------- */
+
+export const leadSchema = z.object({
+  firstName: requiredName(100, "First name"),
+  lastName: z.string().max(100, "Last name must be at most 100 characters.").optional(),
+  email: z
+    .string()
+    .max(255, "Email must be at most 255 characters.")
+    .refine((v) => !v || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim()), "Enter a valid email address.")
+    .optional(),
+  phoneNumber: z.string().max(50, "Phone number must be at most 50 characters.").optional(),
+  companyName: z.string().max(200, "Company name must be at most 200 characters.").optional(),
+  source: z.enum(["DIRECT", "WEBSITE_FORM", "CHATBOT", "CAMPAIGN", "REFERRAL", "IMPORT", "OTHER"]).optional(),
+  stage: z.enum(["NEW", "CONTACTED", "QUALIFIED", "PROPOSAL", "NEGOTIATION", "WON", "LOST"]).optional(),
+  estimatedValueEtb: z.string().optional(),
+  notes: z.string().max(2000, "Notes must be at most 2000 characters.").optional(),
+});
+export type LeadInput = z.infer<typeof leadSchema>;
+
+export const leadActivitySchema = z.object({
+  activityType: z.enum(["STAGE_CHANGE", "NOTE", "CALL", "EMAIL", "MEETING", "FORM_SUBMISSION", "ASSIGNMENT"]),
+  description: z.string().min(1, "Description is required.").max(2000, "Description must be at most 2000 characters."),
+});
+export type LeadActivityInput = z.infer<typeof leadActivitySchema>;

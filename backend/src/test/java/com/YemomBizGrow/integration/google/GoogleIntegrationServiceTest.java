@@ -1,0 +1,222 @@
+package com.YemomBizGrow.integration.google;
+
+import com.YemomBizGrow.audit.AuditAction;
+import com.YemomBizGrow.audit.AuditService;
+import com.YemomBizGrow.common.exception.BadRequestException;
+import com.YemomBizGrow.common.exception.NotFoundException;
+import com.YemomBizGrow.integration.google.dto.AnalyticsOverviewResponse;
+import com.YemomBizGrow.integration.google.dto.GoogleCallbackRequest;
+import com.YemomBizGrow.integration.google.dto.GoogleConnectUrlResponse;
+import com.YemomBizGrow.integration.google.dto.GoogleConnectionStatusResponse;
+import com.YemomBizGrow.membership.AccessControlService;
+import com.YemomBizGrow.membership.Permission;
+import com.YemomBizGrow.website.Website;
+import com.YemomBizGrow.website.WebsiteRepository;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+@ExtendWith(MockitoExtension.class)
+class GoogleIntegrationServiceTest {
+
+    @Mock
+    private GoogleCredentialRepository credentialRepository;
+    @Mock
+    private GoogleAnalyticsSnapshotRepository gaSnapshotRepository;
+    @Mock
+    private GoogleSearchConsoleSnapshotRepository gscSnapshotRepository;
+    @Mock
+    private WebsiteRepository websiteRepository;
+    @Mock
+    private AccessControlService accessControlService;
+    @Mock
+    private AuditService auditService;
+    @Mock
+    private EncryptionService encryptionService;
+
+    private GoogleIntegrationProperties googleProps;
+    private GoogleIntegrationService service;
+
+    private final UUID actorId = UUID.randomUUID();
+    private final UUID orgId = UUID.randomUUID();
+    private final UUID websiteId = UUID.randomUUID();
+    private Website website;
+
+    @BeforeEach
+    void setUp() {
+        googleProps = new GoogleIntegrationProperties();
+        googleProps.setClientId("test-client-id");
+        googleProps.setClientSecret("test-secret");
+        googleProps.setRedirectUri("http://localhost:3000/callback");
+
+        service = new GoogleIntegrationService(
+                credentialRepository,
+                gaSnapshotRepository,
+                gscSnapshotRepository,
+                websiteRepository,
+                accessControlService,
+                auditService,
+                encryptionService,
+                googleProps);
+
+        website = new Website();
+        website.setId(websiteId);
+        website.setOrganizationId(orgId);
+        website.setName("Test Website");
+        website.setDomain("example.com");
+    }
+
+    @Test
+    void getConnectionStatus_whenNotConnected_returnsFalse() {
+        when(websiteRepository.findByIdAndOrganizationId(websiteId, orgId)).thenReturn(Optional.of(website));
+        when(credentialRepository.findByOrganizationIdAndWebsiteId(orgId, websiteId)).thenReturn(Optional.empty());
+
+        GoogleConnectionStatusResponse status = service.getConnectionStatus(actorId, orgId, websiteId);
+
+        assertThat(status.connected()).isFalse();
+        assertThat(status.websiteId()).isEqualTo(websiteId);
+        verify(accessControlService).requirePermission(actorId, orgId, Permission.ANALYTICS_VIEW);
+    }
+
+    @Test
+    void getConnectionStatus_whenConnected_returnsTrue() {
+        when(websiteRepository.findByIdAndOrganizationId(websiteId, orgId)).thenReturn(Optional.of(website));
+
+        GoogleCredential cred = new GoogleCredential();
+        cred.setOrganizationId(orgId);
+        cred.setWebsiteId(websiteId);
+        cred.setGoogleAccountId("account@example.com");
+        cred.setCreatedAt(Instant.now());
+        cred.setTokenExpiry(Instant.now().plusSeconds(3600));
+        cred.setScopes("openid email");
+        when(credentialRepository.findByOrganizationIdAndWebsiteId(orgId, websiteId)).thenReturn(Optional.of(cred));
+
+        GoogleConnectionStatusResponse status = service.getConnectionStatus(actorId, orgId, websiteId);
+
+        assertThat(status.connected()).isTrue();
+        assertThat(status.googleAccountId()).isEqualTo("account@example.com");
+    }
+
+    @Test
+    void generateConnectUrl_savesStateAndReturnsAuthUrl() {
+        when(websiteRepository.findByIdAndOrganizationId(websiteId, orgId)).thenReturn(Optional.of(website));
+        when(credentialRepository.findByOrganizationIdAndWebsiteId(orgId, websiteId)).thenReturn(Optional.empty());
+        when(encryptionService.encrypt(any())).thenReturn("encrypted_dummy");
+
+        GoogleConnectUrlResponse response = service.generateConnectUrl(actorId, orgId, websiteId);
+
+        assertThat(response.authUrl()).contains("accounts.google.com");
+        assertThat(response.authUrl()).contains("client_id=test-client-id");
+        assertThat(response.state()).isNotBlank();
+
+        verify(accessControlService).requirePermission(actorId, orgId, Permission.WEBSITE_MANAGE);
+        verify(credentialRepository).save(any(GoogleCredential.class));
+    }
+
+    @Test
+    void handleCallback_withValidState_completesConnection() {
+        when(websiteRepository.findByIdAndOrganizationId(websiteId, orgId)).thenReturn(Optional.of(website));
+
+        GoogleCredential cred = new GoogleCredential();
+        cred.setOrganizationId(orgId);
+        cred.setWebsiteId(websiteId);
+        cred.setOauthState("valid-state-123");
+        when(credentialRepository.findByOrganizationIdAndWebsiteId(orgId, websiteId)).thenReturn(Optional.of(cred));
+        when(encryptionService.encrypt(any())).thenReturn("encrypted_token");
+
+        GoogleCallbackRequest req = new GoogleCallbackRequest(websiteId, "test-auth-code", "valid-state-123");
+        GoogleConnectionStatusResponse resp = service.handleCallback(actorId, orgId, req);
+
+        assertThat(resp.connected()).isTrue();
+        assertThat(cred.getOauthState()).isNull(); // state cleared
+        verify(auditService).record(eq(orgId), eq(actorId), eq(AuditAction.GOOGLE_CONNECTED), eq("Website"), eq(websiteId), any());
+    }
+
+    @Test
+    void handleCallback_withInvalidState_throwsBadRequest() {
+        when(websiteRepository.findByIdAndOrganizationId(websiteId, orgId)).thenReturn(Optional.of(website));
+
+        GoogleCredential cred = new GoogleCredential();
+        cred.setOrganizationId(orgId);
+        cred.setWebsiteId(websiteId);
+        cred.setOauthState("original-state");
+        when(credentialRepository.findByOrganizationIdAndWebsiteId(orgId, websiteId)).thenReturn(Optional.of(cred));
+
+        GoogleCallbackRequest req = new GoogleCallbackRequest(websiteId, "code", "tampered-state");
+        assertThatThrownBy(() -> service.handleCallback(actorId, orgId, req))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("state");
+    }
+
+    @Test
+    void disconnect_removesCredentialAndLogsAudit() {
+        when(websiteRepository.findByIdAndOrganizationId(websiteId, orgId)).thenReturn(Optional.of(website));
+
+        GoogleCredential cred = new GoogleCredential();
+        cred.setOrganizationId(orgId);
+        cred.setWebsiteId(websiteId);
+        cred.setGoogleAccountId("user@example.com");
+        when(credentialRepository.findByOrganizationIdAndWebsiteId(orgId, websiteId)).thenReturn(Optional.of(cred));
+
+        service.disconnect(actorId, orgId, websiteId);
+
+        verify(credentialRepository).delete(cred);
+        verify(auditService).record(eq(orgId), eq(actorId), eq(AuditAction.GOOGLE_DISCONNECTED), eq("Website"), eq(websiteId), any());
+    }
+
+    @Test
+    void getOverview_aggregatesDataCorrectly() {
+        when(websiteRepository.findByIdAndOrganizationId(websiteId, orgId)).thenReturn(Optional.of(website));
+
+        LocalDate date1 = LocalDate.now().minusDays(1);
+        GoogleAnalyticsSnapshot ga = new GoogleAnalyticsSnapshot();
+        ga.setOrganizationId(orgId);
+        ga.setWebsiteId(websiteId);
+        ga.setSnapshotDate(date1);
+        ga.setSessions(100);
+        ga.setUsers(80);
+        ga.setPageViews(250);
+        ga.setBounceRate(BigDecimal.valueOf(40.0));
+
+        GoogleSearchConsoleSnapshot gsc = new GoogleSearchConsoleSnapshot();
+        gsc.setOrganizationId(orgId);
+        gsc.setWebsiteId(websiteId);
+        gsc.setSnapshotDate(date1);
+        gsc.setTotalClicks(20);
+        gsc.setTotalImpressions(400);
+        gsc.setAvgCtr(BigDecimal.valueOf(0.05));
+        gsc.setAvgPosition(BigDecimal.valueOf(12.5));
+
+        when(gaSnapshotRepository.findByOrganizationIdAndWebsiteIdAndSnapshotDateBetweenOrderBySnapshotDateAsc(
+                eq(orgId), eq(websiteId), any(), any())).thenReturn(List.of(ga));
+        when(gscSnapshotRepository.findByOrganizationIdAndWebsiteIdAndSnapshotDateBetweenOrderBySnapshotDateAsc(
+                eq(orgId), eq(websiteId), any(), any())).thenReturn(List.of(gsc));
+
+        AnalyticsOverviewResponse overview = service.getOverview(actorId, orgId, websiteId, null, null);
+
+        assertThat(overview.totalSessions()).isEqualTo(100);
+        assertThat(overview.totalUsers()).isEqualTo(80);
+        assertThat(overview.totalPageViews()).isEqualTo(250);
+        assertThat(overview.avgBounceRate()).isEqualTo(40.0);
+        assertThat(overview.totalClicks()).isEqualTo(20);
+        assertThat(overview.totalImpressions()).isEqualTo(400);
+        assertThat(overview.dailyMetrics()).isNotEmpty();
+    }
+}

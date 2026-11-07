@@ -1,6 +1,6 @@
-package com.bizgrow.common.security;
+package com.YemomBizGrow.common.security;
 
-import com.bizgrow.user.UserStatus;
+import com.YemomBizGrow.user.UserStatus;
 
 import java.util.UUID;
 

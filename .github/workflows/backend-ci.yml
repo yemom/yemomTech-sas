@@ -1,8 +1,12 @@
 name: Backend CI
 
+# This workflow is superseded by ci.yml which runs the full pipeline.
+# Kept here so PRs that only touch backend/ still get fast feedback
+# without waiting for the frontend job.
+
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
     paths:
       - "backend/**"
       - ".github/workflows/backend-ci.yml"
@@ -21,22 +25,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
-    services:
-      # Integration tests use Testcontainers (Docker), but Postgres is also
-      # declared here so local-profile runs could reuse it later.
-      postgres:
-        image: postgres:17-alpine
-        env:
-          POSTGRES_DB: bizgrow
-          POSTGRES_USER: bizgrow_user
-          POSTGRES_PASSWORD: bizgrow_password
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U bizgrow_user"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
+    defaults:
+      run:
+        working-directory: backend
 
     steps:
       - name: Check out
@@ -49,8 +40,13 @@ jobs:
           java-version: "21"
           cache: maven
 
-      - name: Run tests (unit + Testcontainers ITs)
-        run: ./mvnw -B verify
+      # Testcontainers provisions its own Postgres + Redis containers.
+      # No services block needed here — Docker is available on ubuntu-latest.
+      - name: Run unit tests
+        run: ./mvnw -B test -q
+
+      - name: Run integration tests (Testcontainers)
+        run: ./mvnw -B failsafe:integration-test failsafe:verify -q
 
       - name: Upload surefire/failsafe reports on failure
         if: failure()

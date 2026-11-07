@@ -1,6 +1,6 @@
-package com.bizgrow.common.security;
+package com.YemomBizGrow.common.security;
 
-import com.bizgrow.common.config.AppProperties;
+import com.YemomBizGrow.common.config.AppProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpHeaders;
@@ -30,11 +30,9 @@ import java.util.List;
  *       requests cannot be forged cross-site (the attacker cannot read the token),
  *       while the two cookie-authenticated endpoints ({@code /auth/refresh},
  *       {@code /auth/logout}) are protected by a double-submit CSRF token inside
- *       {@link com.bizgrow.auth.AuthService} — simpler and more explicit than
- *       Spring's cookie-agnostic defaults with a cross-origin frontend.</li>
+ *       {@link com.YemomBizGrow.auth.AuthService}.</li>
  *   <li><b>CORS with an exact allowlist:</b> credentials (cookies) are enabled, so
- *       wildcard origins are rejected by StartupValidator — the browser would
- *       refuse them anyway.</li>
+ *       wildcard origins are rejected by StartupValidator.</li>
  * </ul></p>
  */
 @Configuration
@@ -60,15 +58,24 @@ public class SecurityConfig {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        // Credential issuance endpoints (CSRF handled manually for cookie ops)
-                        .requestMatchers("/api/v1/auth/register",
+                        // Credential issuance and recovery endpoints
+                        .requestMatchers(
+                                "/api/v1/auth/register",
                                 "/api/v1/auth/login",
                                 "/api/v1/auth/refresh",
-                                "/api/v1/auth/logout").permitAll()
+                                "/api/v1/auth/logout",
+                                "/api/v1/auth/forgot-password",
+                                "/api/v1/auth/reset-password",
+                                "/api/v1/auth/verify-email"
+                        ).permitAll()
+                        // Public endpoints (lead capture forms, chatbot widgets)
+                        .requestMatchers("/api/v1/public/**").permitAll()
                         // Infrastructure: health probes and API documentation
-                        .requestMatchers("/actuator/health", "/actuator/health/**",
+                        .requestMatchers(
+                                "/actuator/health", "/actuator/health/**",
                                 "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html",
-                                "/swagger-ui/index.html").permitAll()
+                                "/swagger-ui/index.html"
+                        ).permitAll()
                         // Everything else requires a valid access token;
                         // organization permissions are enforced inside services.
                         .anyRequest().authenticated())
@@ -91,8 +98,6 @@ public class SecurityConfig {
         config.setAllowedHeaders(List.of(HttpHeaders.AUTHORIZATION, HttpHeaders.CONTENT_TYPE,
                 "X-CSRF-TOKEN", "X-Requested-With"));
         config.setExposedHeaders(List.of("X-Trace-Id"));
-        // Cookies (refresh + CSRF) must accompany cross-origin requests from the
-        // configured frontend origins.
         config.setAllowCredentials(true);
         config.setMaxAge(3600L);
 
@@ -101,9 +106,8 @@ public class SecurityConfig {
         return source;
     }
 
-    /** BCrypt cost 12: strong default, ~250ms per hash on modern hardware. */
     @Bean
     public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder(12);
+        return new BCryptPasswordEncoder();
     }
 }

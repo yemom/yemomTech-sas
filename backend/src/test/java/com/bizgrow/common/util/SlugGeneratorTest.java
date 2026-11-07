@@ -1,4 +1,4 @@
-package com.bizgrow.common.util;
+package com.YemomBizGrow.common.util;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

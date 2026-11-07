@@ -1,4 +1,4 @@
-package com.bizgrow.common.exception;
+package com.YemomBizGrow.common.exception;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 

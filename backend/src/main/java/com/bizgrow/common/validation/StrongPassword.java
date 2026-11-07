@@ -1,4 +1,4 @@
-package com.bizgrow.common.validation;
+package com.YemomBizGrow.common.validation;
 
 import jakarta.validation.Constraint;
 import jakarta.validation.Payload;

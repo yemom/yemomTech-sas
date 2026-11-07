@@ -1,4 +1,4 @@
-package com.bizgrow.common.config;
+package com.YemomBizGrow.common.config;
 
 import io.swagger.v3.oas.models.Components;
 import io.swagger.v3.oas.models.OpenAPI;
@@ -19,10 +19,10 @@ public class OpenApiConfig {
     public static final String BEARER_SCHEME = "bearerAuth";
 
     @Bean
-    public OpenAPI bizgrowOpenApi() {
+    public OpenAPI YemomBizGrowOpenApi() {
         return new OpenAPI()
                 .info(new Info()
-                        .title("YemomTech (BizGrow) API")
+                        .title("YemomTech (YemomBizGrow) API")
                         .version("v1")
                         .description("AI-powered digital growth and business management SaaS — REST API. "
                                 + "All tenant-scoped endpoints require membership of the organization in the path."))

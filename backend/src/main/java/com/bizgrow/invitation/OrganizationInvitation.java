@@ -1,6 +1,6 @@
-package com.bizgrow.invitation;
+package com.YemomBizGrow.invitation;
 
-import com.bizgrow.membership.MembershipRole;
+import com.YemomBizGrow.membership.MembershipRole;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;

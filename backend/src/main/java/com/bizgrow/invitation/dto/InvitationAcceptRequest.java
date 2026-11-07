@@ -1,4 +1,4 @@
-package com.bizgrow.invitation.dto;
+package com.YemomBizGrow.invitation.dto;
 
 import jakarta.validation.constraints.NotBlank;
 

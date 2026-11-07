@@ -1,4 +1,4 @@
-package com.bizgrow.membership;
+package com.YemomBizGrow.membership;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

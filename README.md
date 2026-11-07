@@ -1,4 +1,4 @@
-# YemomTech (BizGrow)
+# YemomTech (YemomBizGrow)
 
 AI-powered growth platform for Ethiopian businesses — websites, team
 collaboration, and (future) SEO/lead/analytics modules in one secure
@@ -12,7 +12,7 @@ browser E2E tests, CI workflows, and full documentation.
 ## Repository layout
 
 ```
-backend/    Spring Boot 3.5.16 / Java 21 modular monolith (com.bizgrow)
+backend/    Spring Boot 3.5.16 / Java 21 modular monolith (com.YemomBizGrow)
 frontend/   Next.js 16 (App Router) / React 19 / TypeScript strict
 docs/       Architecture, security, database, API, testing, roadmap docs + ADRs
 infrastructure/docker/  Backend & frontend Dockerfiles

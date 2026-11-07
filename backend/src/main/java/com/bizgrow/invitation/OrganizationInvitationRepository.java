@@ -1,4 +1,4 @@
-package com.bizgrow.invitation;
+package com.YemomBizGrow.invitation;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;

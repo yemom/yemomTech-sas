@@ -1,7 +1,11 @@
-package com.bizgrow.audit;
+package com.YemomBizGrow.audit;
 
+import com.YemomBizGrow.audit.dto.AuditLogResponse;
+import com.YemomBizGrow.common.response.PageResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.util.LinkedHashMap;
@@ -11,25 +15,12 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Writes the security/organization audit trail.
- *
- * <p>Deliberate properties:
- * <ul>
- *   <li><b>Fire-safe, never fatal:</b> audit persistence problems are logged and
- *       swallowed — an analytics/forensics concern must not roll back the business
- *       transaction the user actually asked for. (If regulation later demands
- *       strict audit durability, flip this to a throwing variant.)</li>
- *   <li><b>Secret scrubbing:</b> metadata keys containing password/token/secret/hash
- *       are dropped before writing, so a careless call site can never leak credentials
- *       into the trail.</li>
- *   <li><b>Append-only:</b> the repository exposes no update/delete paths for callers.</li>
- * </ul></p>
+ * Writes and queries the security/organization audit trail.
  */
 @Service
 public class AuditService {
 
     private static final Logger log = LoggerFactory.getLogger(AuditService.class);
-
     private static final Set<String> SECRET_KEY_HINTS = Set.of("password", "token", "secret", "credential", "hash");
 
     private final AuditLogRepository repository;
@@ -53,6 +44,11 @@ public class AuditService {
             log.warn("Audit write failed for {} (actor={}, org={}): {}",
                     action, actorUserId, organizationId, e.getMessage());
         }
+    }
+
+    public PageResponse<AuditLogResponse> listByOrganization(UUID organizationId, Pageable pageable) {
+        Page<AuditLog> page = repository.findByOrganizationIdOrderByCreatedAtDesc(organizationId, pageable);
+        return PageResponse.from(page.map(AuditLogResponse::from));
     }
 
     private Map<String, Object> sanitize(Map<String, Object> metadata) {

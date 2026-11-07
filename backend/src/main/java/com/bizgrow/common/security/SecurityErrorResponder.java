@@ -1,8 +1,8 @@
-package com.bizgrow.common.security;
+package com.YemomBizGrow.common.security;
 
-import com.bizgrow.common.config.AppProperties;
-import com.bizgrow.common.config.RequestTraceFilter;
-import com.bizgrow.common.exception.ErrorResponse;
+import com.YemomBizGrow.common.config.AppProperties;
+import com.YemomBizGrow.common.config.RequestTraceFilter;
+import com.YemomBizGrow.common.exception.ErrorResponse;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletResponse;

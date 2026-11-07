@@ -21,7 +21,7 @@ named explicitly so future work can be checked against them.
 | --- | --- | --- | --- |
 | Access JWT | 15 min (`JWT_ACCESS_EXPIRATION_SECONDS=900`) | **Frontend memory only** (module variable — never `localStorage`/`sessionStorage`) | `Authorization: Bearer` on API calls |
 | Refresh token | 30 days (`JWT_REFRESH_EXPIRATION_DAYS=30`) | **HttpOnly cookie** + SHA-256 digest in `refresh_tokens` | Silent session renewal |
-| CSRF token | per session | Non-HttpOnly `csrf` cookie (readable by JS) + mirrored to `localStorage.bizgrow_csrf` | Double-submit on refresh/logout |
+| CSRF token | per session | Non-HttpOnly `csrf` cookie (readable by JS) + mirrored to `localStorage.YemomBizGrow_csrf` | Double-submit on refresh/logout |
 
 - Access JWT claims: subject = user id, issued-at/expiry, `jti`. Signed with
   `JWT_SECRET` (HS256, ≥ 32 bytes entropy enforced at startup).
@@ -71,7 +71,7 @@ Cookie-authenticated endpoints are only `POST /auth/refresh` and
 Mismatch/absence → 403 (`SecurityErrorResponder`, same error envelope).
 Because the cookie is SameSite-protected *and* the header must echo it, a
 cross-site attacker can neither send the cookie nor read the value.
-The frontend stores the latest `csrfToken` in `localStorage.bizgrow_csrf`
+The frontend stores the latest `csrfToken` in `localStorage.YemomBizGrow_csrf`
 purely to echo it — it is useless without the HttpOnly cookie.
 
 ## 5. Login throttling (Redis, fail-open)

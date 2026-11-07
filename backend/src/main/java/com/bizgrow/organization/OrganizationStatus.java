@@ -1,4 +1,4 @@
-package com.bizgrow.organization;
+package com.YemomBizGrow.organization;
 
 /**
  * Organization lifecycle. Deletion is deliberately soft: ARCHIVED organizations
