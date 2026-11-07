@@ -1,0 +1,15 @@
+@import "tailwindcss";
+
+/* YemomTech design tokens. Tailwind 4 reads these via @theme. */
+@theme {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  @apply bg-slate-50 text-slate-900 antialiased;
+}

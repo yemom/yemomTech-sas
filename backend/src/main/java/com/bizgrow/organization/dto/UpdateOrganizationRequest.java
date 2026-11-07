@@ -25,6 +25,9 @@ public record UpdateOrganizationRequest(
         String description,
 
         @Size(max = 500, message = "Website URL must be at most 500 characters.")
-        @Pattern(regexp = "(?i)^https?://.+", message = "Website URL must start with http:// or https://")
+        // Empty string is allowed here: the service treats blank as "clear"
+        // (trimToNull/normalizeOptionalWebsiteUrl), which is the documented
+        // PATCH semantic. A non-empty value must be a real http(s) URL.
+        @Pattern(regexp = "(?i)^(https?://.+)?$", message = "Website URL must start with http:// or https://")
         String websiteUrl) {
 }

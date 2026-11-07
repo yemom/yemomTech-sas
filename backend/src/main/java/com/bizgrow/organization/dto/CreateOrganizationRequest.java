@@ -27,6 +27,7 @@ public record CreateOrganizationRequest(
         String description,
 
         @Size(max = 500, message = "Website URL must be at most 500 characters.")
-        @Pattern(regexp = "(?i)^https?://.+", message = "Website URL must start with http:// or https://")
+        // Empty string == absent (the service normalizes blank to null).
+        @Pattern(regexp = "(?i)^(https?://.+)?$", message = "Website URL must start with http:// or https://")
         String websiteUrl) {
 }

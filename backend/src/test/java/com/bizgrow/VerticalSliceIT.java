@@ -245,6 +245,30 @@ class VerticalSliceIT extends AbstractIntegrationTest {
 
     @Test
     @Order(12)
+    @DisplayName("PATCH updates optional fields; an empty string clears them")
+    void updateOrganization() {
+        // Set a URL first so there is something to clear.
+        ResponseEntity<String> set = patch("/api/v1/organizations/" + organizationId,
+                Map.of("websiteUrl", "https://habeshafoods.et/about"), bearerHeaders(session));
+        assertStatus(set, 200, "patch organization url");
+        Assertions.assertThat(jsonStr(set.getBody(), "$.websiteUrl"))
+                .isEqualTo("https://habeshafoods.et/about");
+
+        // Empty string is the documented "clear" semantic (javadoc + service
+        // trimToNull) — it must NOT be rejected by @Pattern.
+        ResponseEntity<String> cleared = patch("/api/v1/organizations/" + organizationId,
+                Map.of("websiteUrl", "", "description", ""), bearerHeaders(session));
+        assertStatus(cleared, 200, "patch organization with empty strings");
+        Assertions.assertThat(cleared.getBody()).doesNotContain("\"websiteUrl\":\"http");
+
+        // A non-empty but invalid URL still fails validation with the envelope.
+        ResponseEntity<String> invalid = patch("/api/v1/organizations/" + organizationId,
+                Map.of("websiteUrl", "not-a-url"), bearerHeaders(session));
+        assertErrorEnvelope(invalid, 400, "invalid website url");
+    }
+
+    @Test
+    @Order(13)
     @DisplayName("organization soft-delete (archive) is owner-only and returns 204")
     void archiveOrganization() {
         Session other = register(uniqueEmail(), PASSWORD);

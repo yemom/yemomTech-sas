@@ -1,0 +1,63 @@
+name: Backend CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-ci.yml"
+  pull_request:
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-ci.yml"
+
+concurrency:
+  group: backend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Unit + integration tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      # Integration tests use Testcontainers (Docker), but Postgres is also
+      # declared here so local-profile runs could reuse it later.
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: bizgrow
+          POSTGRES_USER: bizgrow_user
+          POSTGRES_PASSWORD: bizgrow_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U bizgrow_user"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - name: Run tests (unit + Testcontainers ITs)
+        run: ./mvnw -B verify
+
+      - name: Upload surefire/failsafe reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-reports
+          path: |
+            backend/target/surefire-reports/
+            backend/target/failsafe-reports/
+          retention-days: 7
