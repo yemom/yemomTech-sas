@@ -1,0 +1,51 @@
+# ---- Java / Maven ----
+backend/target/
+backend/.mvn/wrapper/maven-wrapper.jar
+*.class
+*.jar
+!mvnw
+!mvnw.cmd
+!.mvn/wrapper/maven-wrapper.properties
+
+# ---- Node / Next.js ----
+node_modules/
+.next/
+out/
+build/
+dist/
+coverage/
+*.tsbuildinfo
+next-env.d.ts
+
+# ---- Test artifacts ----
+frontend/test-results/
+frontend/playwright-report/
+frontend/blob-report/
+frontend/playwright/.cache/
+
+# ---- Environment / secrets ----
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ---- IDE / OS ----
+.idea/
+*.iml
+.vscode/*
+!.vscode/extensions.json
+.vscode/settings.json
+.DS_Store
+Thumbs.db
+
+# ---- Local tool state ----
+.refact/
+
+# ---- Logs ----
+*.log
+logs/
+backend/hs_err_pid*
+
+# ---- Docker local data ----
+infrastructure/docker/data/

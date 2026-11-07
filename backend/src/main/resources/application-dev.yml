@@ -1,0 +1,32 @@
+# =============================================================
+# DEVELOPMENT profile — safe local defaults only.
+# Every secret here is publicly known and intentionally useless
+# outside localhost. Startup validation rejects these values when
+# any profile other than dev/test is active.
+# =============================================================
+spring:
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://127.0.0.1:5632/bizgrow}
+    username: ${DATABASE_USERNAME:bizgrow_user}
+    password: ${DATABASE_PASSWORD:bizgrow_password}
+  data:
+    redis:
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6637}
+      password: ${REDIS_PASSWORD:}
+
+app:
+  security:
+    jwt:
+      secret: ${JWT_SECRET:dev_only_secret_do_not_use_in_production_0a1b2c3d4e5f6789abcdef}
+    cors:
+      allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
+    invitation:
+      # Raw invitation tokens are returned to the developer in dev so the
+      # invite flow is testable without SMTP. Production must never do this.
+      expose-dev-token: true
+
+logging:
+  level:
+    com.bizgrow: DEBUG
+    org.flywaydb: INFO

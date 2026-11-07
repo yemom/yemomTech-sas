@@ -1,0 +1,36 @@
+# =============================================================
+# TEST profile — used by unit-slice and integration tests.
+# Integration tests override the datasource with Testcontainers
+# URLs (@DynamicPropertySource has higher precedence).
+# =============================================================
+spring:
+  datasource:
+    url: ${TEST_DATABASE_URL:jdbc:postgresql://localhost:5432/bizgrow_test}
+    username: ${TEST_DATABASE_USERNAME:bizgrow_test}
+    password: ${TEST_DATABASE_PASSWORD:bizgrow_test}
+  data:
+    redis:
+      host: ${TEST_REDIS_HOST:localhost}
+      port: ${TEST_REDIS_PORT:6379}
+      password: ""
+
+app:
+  security:
+    jwt:
+      secret: test_only_secret_0123456789abcdef0123456789abcdef0123456789abcdef
+    cors:
+      # Startup validation requires a non-wildcard origin list in every profile.
+      allowed-origins: http://localhost:3000
+    invitation:
+      expose-dev-token: true
+    login:
+      # Do not let shared test data trip the login throttle.
+      max-attempts: 10000
+      window-minutes: 1
+
+logging:
+  level:
+    root: WARN
+    com.bizgrow: INFO
+    org.testcontainers: INFO
+    org.flywaydb: INFO
