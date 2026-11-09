@@ -26,4 +26,15 @@ test("agency client management UI validates client link request authorization", 
   // Agency dashboard header should be visible
   await expect(page.getByRole("heading", { name: "Agency Client Workspace" })).toBeVisible();
   await expect(page.getByRole("button", { name: "+ Link Client Organization" })).toBeVisible();
+
+  // Open link client modal
+  await page.getByRole("button", { name: "+ Link Client Organization" }).click();
+  await expect(page.getByRole("heading", { name: "Link Client Organization" })).toBeVisible();
+
+  // Enter invalid/non-existent client slug and verify fail-closed error handling
+  await page.getByPlaceholder("e.g. ethio-real-estate").fill("non-existent-client-org");
+  await page.getByRole("button", { name: "Send Link Request" }).click();
+
+  // Modal remains open or displays error callout
+  await expect(page.getByRole("heading", { name: "Link Client Organization" })).toBeVisible();
 });
