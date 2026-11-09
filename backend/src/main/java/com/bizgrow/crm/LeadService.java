@@ -64,7 +64,13 @@ public class LeadService {
         lead.setFirstName(request.firstName().trim());
         lead.setLastName(request.lastName() != null ? request.lastName().trim() : null);
         lead.setEmail(request.email() != null ? request.email().trim().toLowerCase() : null);
-        lead.setPhoneNumber(request.phoneNumber() != null ? request.phoneNumber().trim() : null);
+        String phone = request.phoneNumber() != null ? request.phoneNumber().trim() : null;
+        if (phone != null) {
+            String normalized = com.YemomBizGrow.common.util.EthiopianPhoneNormalizer.normalize(phone);
+            lead.setPhoneNumber(normalized != null ? normalized : phone);
+        } else {
+            lead.setPhoneNumber(null);
+        }
         lead.setCompanyName(request.companyName() != null ? request.companyName().trim() : null);
         lead.setSource(request.source() != null ? request.source() : LeadSource.DIRECT);
         lead.setStage(request.stage() != null ? request.stage() : LeadStage.NEW);
@@ -138,7 +144,9 @@ public class LeadService {
             lead.setEmail(request.email().trim().toLowerCase());
         }
         if (request.phoneNumber() != null) {
-            lead.setPhoneNumber(request.phoneNumber().trim());
+            String p = request.phoneNumber().trim();
+            String normalized = com.YemomBizGrow.common.util.EthiopianPhoneNormalizer.normalize(p);
+            lead.setPhoneNumber(normalized != null ? normalized : p);
         }
         if (request.companyName() != null) {
             lead.setCompanyName(request.companyName().trim());
@@ -295,7 +303,13 @@ public class LeadService {
         lead.setFirstName(request.firstName().trim());
         lead.setLastName(request.lastName() != null ? request.lastName().trim() : null);
         lead.setEmail(request.email() != null ? request.email().trim().toLowerCase() : null);
-        lead.setPhoneNumber(request.phoneNumber() != null ? request.phoneNumber().trim() : null);
+        String phone = request.phoneNumber() != null ? request.phoneNumber().trim() : null;
+        if (phone != null) {
+            String normalized = com.YemomBizGrow.common.util.EthiopianPhoneNormalizer.normalize(phone);
+            lead.setPhoneNumber(normalized != null ? normalized : phone);
+        } else {
+            lead.setPhoneNumber(null);
+        }
         lead.setCompanyName(request.companyName() != null ? request.companyName().trim() : null);
         lead.setSource(LeadSource.WEBSITE_FORM);
         lead.setStage(LeadStage.NEW);
