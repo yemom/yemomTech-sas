@@ -96,3 +96,9 @@ app:
     redirect-uri: ${GOOGLE_REDIRECT_URI:http://localhost:3000/api/auth/callback/google}
   frontend:
     base-url: ${FRONTEND_URL:http://localhost:3000}
+
+bizgrow:
+  billing:
+    chapa:
+      secret-key: ${CHAPA_SECRET_KEY:}
+      webhook-secret: ${CHAPA_WEBHOOK_SECRET:}

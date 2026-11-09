@@ -14,7 +14,7 @@ WORKDIR /app
 
 COPY frontend/package.json frontend/package-lock.json ./
 
-RUN npm ci --omit=dev
+RUN npm ci
 
 # ---- Stage 2: builder ----
 FROM node:20-alpine AS builder
