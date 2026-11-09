@@ -98,7 +98,6 @@ jobs:
 
       - name: Lint
         run: npm run lint
-        continue-on-error: true  # Lint warnings don't block CI; errors do (see eslint.config)
 
       - name: Unit tests (Vitest)
         run: npm run test

@@ -15,7 +15,6 @@ import { errorMessage } from "@/lib/api/client";
 import { useSeoAudits, useTriggerSeoAudit } from "@/lib/api/hooks";
 import { can } from "@/lib/api/permissions";
 import { useAuth } from "@/lib/auth/auth-context";
-import type { SeoAudit } from "@/lib/api/types";
 
 export default function WebsiteAuditsPage() {
   const params = useParams<{ websiteId: string }>();

@@ -25,12 +25,12 @@ export default function GoogleCallbackPage() {
     const oauthError = searchParams.get("error");
 
     if (oauthError) {
-      setError(`Google authorization was denied or failed: ${oauthError}`);
+      queueMicrotask(() => setError(`Google authorization was denied or failed: ${oauthError}`));
       return;
     }
 
     if (!code || !state) {
-      setError("Missing authorization code or state parameter from Google.");
+      queueMicrotask(() => setError("Missing authorization code or state parameter from Google."));
       return;
     }
 
@@ -40,7 +40,7 @@ export default function GoogleCallbackPage() {
         : null;
 
     if (!websiteId) {
-      setError("Could not associate callback with a website. Please try connecting again from the Analytics page.");
+      queueMicrotask(() => setError("Could not associate callback with a website. Please try connecting again from the Analytics page."));
       return;
     }
 

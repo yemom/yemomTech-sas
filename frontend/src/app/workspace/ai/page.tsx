@@ -10,7 +10,7 @@ import {
   useUpdateAiRecommendationStatus,
   useUpdateChatbotConfig,
 } from "@/lib/api/hooks";
-import type { RecommendationCategory, RecommendationStatus } from "@/lib/api/types";
+import type { RecommendationStatus } from "@/lib/api/types";
 import { useAuth } from "@/lib/auth/auth-context";
 
 export default function AiWorkspacePage() {
@@ -55,17 +55,20 @@ export default function AiWorkspacePage() {
 
   useEffect(() => {
     if (configQuery.data) {
-      setBotName(configQuery.data.botName);
-      setGreetingMessage(configQuery.data.greetingMessage);
-      setPromptInstructions(configQuery.data.promptInstructions || "");
-      setPrimaryColor(configQuery.data.primaryColor);
-      setIsEnabled(configQuery.data.isEnabled);
-      setFaqItems(configQuery.data.faqItems || []);
+      const data = configQuery.data;
+      queueMicrotask(() => {
+        setBotName(data.botName);
+        setGreetingMessage(data.greetingMessage);
+        setPromptInstructions(data.promptInstructions || "");
+        setPrimaryColor(data.primaryColor);
+        setIsEnabled(data.isEnabled);
+        setFaqItems(data.faqItems || []);
 
-      // Seed simulator initial greeting
-      setChatMessages([
-        { role: "ASSISTANT", content: configQuery.data.greetingMessage },
-      ]);
+        // Seed simulator initial greeting
+        setChatMessages([
+          { role: "ASSISTANT", content: data.greetingMessage },
+        ]);
+      });
     }
   }, [configQuery.data]);
 

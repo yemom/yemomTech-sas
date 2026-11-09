@@ -1,23 +1,20 @@
 package com.YemomBizGrow.agency;
 
 import com.YemomBizGrow.agency.dto.AgencyClientSummaryResponse;
-import com.YemomBizGrow.agency.dto.AgencyOverviewResponse;
 import com.YemomBizGrow.agency.dto.LinkClientRequest;
 import com.YemomBizGrow.agency.dto.UpdateClientRelationshipRequest;
 import com.YemomBizGrow.audit.AuditService;
 import com.YemomBizGrow.common.exception.BadRequestException;
 import com.YemomBizGrow.common.exception.ConflictException;
-import com.YemomBizGrow.crm.Lead;
+import com.YemomBizGrow.common.exception.ForbiddenException;
 import com.YemomBizGrow.crm.LeadRepository;
-import com.YemomBizGrow.crm.LeadStatus;
 import com.YemomBizGrow.marketing.MarketingCampaignRepository;
 import com.YemomBizGrow.membership.AccessControlService;
+import com.YemomBizGrow.membership.Permission;
 import com.YemomBizGrow.organization.Organization;
 import com.YemomBizGrow.organization.OrganizationRepository;
 import com.YemomBizGrow.organization.OrganizationStatus;
-import com.YemomBizGrow.seo.SeoAudit;
 import com.YemomBizGrow.seo.SeoAuditRepository;
-import com.YemomBizGrow.seo.SeoAuditStatus;
 import com.YemomBizGrow.website.WebsiteRepository;
 import com.YemomBizGrow.website.WebsiteStatus;
 import org.junit.jupiter.api.BeforeEach;
@@ -35,7 +32,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -113,13 +110,12 @@ class AgencyServiceTest {
         assertThat(response).isNotNull();
         assertThat(response.clientOrganizationId()).isEqualTo(clientOrgId);
         assertThat(response.status()).isEqualTo(AgencyRelationshipStatus.PENDING);
-        // Metrics must be zero while PENDING
         assertThat(response.totalLeads()).isEqualTo(0);
         assertThat(response.totalPipelineValueEtb()).isEqualByComparingTo(BigDecimal.ZERO);
     }
 
     @Test
-    @DisplayName("Client owner can approve a pending agency connection request")
+    @DisplayName("Scenario 1: PENDING -> ACTIVE by client: allowed")
     void clientCanApprovePendingRequest() {
         UUID relId = UUID.randomUUID();
         AgencyClientRelationship rel = new AgencyClientRelationship();
@@ -147,8 +143,8 @@ class AgencyServiceTest {
     }
 
     @Test
-    @DisplayName("Agency cannot self-approve pending relationship to ACTIVE")
-    void agencyCannotSelfApprove() {
+    @DisplayName("Scenario 2: PENDING -> ACTIVE by agency: rejected")
+    void agencyCannotSelfApprovePending() {
         UUID relId = UUID.randomUUID();
         AgencyClientRelationship rel = new AgencyClientRelationship();
         rel.setId(relId);
@@ -163,7 +159,104 @@ class AgencyServiceTest {
                 actorId, agencyOrgId, relId,
                 new UpdateClientRelationshipRequest(AgencyRelationshipStatus.ACTIVE, null, null)
         )).isInstanceOf(BadRequestException.class)
-          .hasMessageContaining("Agency cannot self-approve");
+          .hasMessageContaining("Agency cannot change relationship status");
+    }
+
+    @Test
+    @DisplayName("Scenario 3: REJECTED -> ACTIVE by agency: rejected")
+    void agencyCannotReactivateRejected() {
+        UUID relId = UUID.randomUUID();
+        AgencyClientRelationship rel = new AgencyClientRelationship();
+        rel.setId(relId);
+        rel.setAgencyOrganizationId(agencyOrgId);
+        rel.setClientOrganizationId(clientOrgId);
+        rel.setStatus(AgencyRelationshipStatus.REJECTED);
+
+        when(relationshipRepository.findByIdAndAgencyOrganizationId(relId, agencyOrgId))
+                .thenReturn(Optional.of(rel));
+
+        assertThatThrownBy(() -> agencyService.updateRelationship(
+                actorId, agencyOrgId, relId,
+                new UpdateClientRelationshipRequest(AgencyRelationshipStatus.ACTIVE, null, null)
+        )).isInstanceOf(BadRequestException.class)
+          .hasMessageContaining("Cannot modify relationship in REJECTED status");
+    }
+
+    @Test
+    @DisplayName("Scenario 4: REVOKED -> ACTIVE by agency: rejected")
+    void agencyCannotReactivateRevoked() {
+        UUID relId = UUID.randomUUID();
+        AgencyClientRelationship rel = new AgencyClientRelationship();
+        rel.setId(relId);
+        rel.setAgencyOrganizationId(agencyOrgId);
+        rel.setClientOrganizationId(clientOrgId);
+        rel.setStatus(AgencyRelationshipStatus.REVOKED);
+
+        when(relationshipRepository.findByIdAndAgencyOrganizationId(relId, agencyOrgId))
+                .thenReturn(Optional.of(rel));
+
+        assertThatThrownBy(() -> agencyService.updateRelationship(
+                actorId, agencyOrgId, relId,
+                new UpdateClientRelationshipRequest(AgencyRelationshipStatus.ACTIVE, null, null)
+        )).isInstanceOf(BadRequestException.class)
+          .hasMessageContaining("Cannot modify relationship in REVOKED status");
+    }
+
+    @Test
+    @DisplayName("Scenario 5: REVOKED -> ACTIVE by client without new request: rejected")
+    void clientCannotApproveRevokedRelationship() {
+        UUID relId = UUID.randomUUID();
+        AgencyClientRelationship rel = new AgencyClientRelationship();
+        rel.setId(relId);
+        rel.setAgencyOrganizationId(agencyOrgId);
+        rel.setClientOrganizationId(clientOrgId);
+        rel.setStatus(AgencyRelationshipStatus.REVOKED);
+
+        when(relationshipRepository.findByIdAndClientOrganizationId(relId, clientOrgId))
+                .thenReturn(Optional.of(rel));
+
+        assertThatThrownBy(() -> agencyService.approveClientRequest(actorId, clientOrgId, relId))
+                .isInstanceOf(ConflictException.class)
+                .hasMessageContaining("Only PENDING agency requests can be approved");
+    }
+
+    @Test
+    @DisplayName("Scenario 6: Revoked agency cannot retrieve confidential client metrics")
+    void revokedAgencyGetsZeroMetrics() {
+        UUID relId = UUID.randomUUID();
+        AgencyClientRelationship rel = new AgencyClientRelationship();
+        rel.setId(relId);
+        rel.setAgencyOrganizationId(agencyOrgId);
+        rel.setClientOrganizationId(clientOrgId);
+        rel.setStatus(AgencyRelationshipStatus.REVOKED);
+
+        Organization client = new Organization();
+        client.setId(clientOrgId);
+        client.setName("Client Org");
+
+        when(relationshipRepository.findByAgencyOrganizationId(agencyOrgId))
+                .thenReturn(List.of(rel));
+        when(organizationRepository.findById(clientOrgId)).thenReturn(Optional.of(client));
+
+        List<AgencyClientSummaryResponse> summaries = agencyService.listClients(actorId, agencyOrgId);
+
+        assertThat(summaries).hasSize(1);
+        AgencyClientSummaryResponse summary = summaries.get(0);
+        assertThat(summary.status()).isEqualTo(AgencyRelationshipStatus.REVOKED);
+        assertThat(summary.totalLeads()).isEqualTo(0);
+        assertThat(summary.websiteCount()).isEqualTo(0);
+        assertThat(summary.totalPipelineValueEtb()).isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    @Test
+    @DisplayName("Scenario 7: Unauthorized users cannot approve requests")
+    void unauthorizedUserCannotApproveRequest() {
+        UUID relId = UUID.randomUUID();
+        doThrow(new ForbiddenException("User lacks permission ORG_UPDATE"))
+                .when(accessControlService).requirePermission(actorId, clientOrgId, Permission.ORG_UPDATE);
+
+        assertThatThrownBy(() -> agencyService.approveClientRequest(actorId, clientOrgId, relId))
+                .isInstanceOf(ForbiddenException.class);
     }
 
     @Test
@@ -191,10 +284,8 @@ class AgencyServiceTest {
 
         assertThat(summaries).hasSize(1);
         AgencyClientSummaryResponse summary = summaries.get(0);
-        // Marketing metrics are available
         assertThat(summary.websiteCount()).isEqualTo(2);
         assertThat(summary.activeCampaignsCount()).isEqualTo(3);
-        // CRM confidential metrics MUST be masked
         assertThat(summary.totalLeads()).isEqualTo(0);
         assertThat(summary.totalPipelineValueEtb()).isEqualByComparingTo(BigDecimal.ZERO);
     }

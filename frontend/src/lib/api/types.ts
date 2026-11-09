@@ -323,6 +323,33 @@ export interface GoogleConnectionStatus {
   connectedAt: string | null;
   tokenExpiry: string | null;
   scopes: string | null;
+  ga4PropertyId?: string | null;
+  gscSiteUrl?: string | null;
+  lastGa4SyncAt?: string | null;
+  lastGscSyncAt?: string | null;
+}
+
+export interface GooglePropertyOption {
+  propertyId: string;
+  displayName: string;
+}
+
+export interface GoogleSiteOption {
+  siteUrl: string;
+  permissionLevel: string;
+}
+
+export interface GoogleAccessibleResources {
+  websiteId: string;
+  selectedGa4PropertyId?: string | null;
+  selectedGscSiteUrl?: string | null;
+  ga4Properties: GooglePropertyOption[];
+  gscSites: GoogleSiteOption[];
+}
+
+export interface GooglePropertySelectionRequest {
+  ga4PropertyId?: string;
+  gscSiteUrl?: string;
 }
 
 export interface GoogleConnectUrl {

@@ -1,5 +1,5 @@
 # =============================================================
-# BizGrow Backend — multi-stage Docker build
+# YemomBizGrow Backend — multi-stage Docker build
 # Stage 1: build the fat-jar with Maven
 # Stage 2: lean JRE 21 runtime image
 # =============================================================

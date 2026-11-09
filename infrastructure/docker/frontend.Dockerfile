@@ -1,5 +1,5 @@
 # =============================================================
-# BizGrow Frontend — multi-stage Docker build (Next.js standalone)
+# YemomBizGrow Frontend — multi-stage Docker build (Next.js standalone)
 # Stage 1: install dependencies
 # Stage 2: build the Next.js app
 # Stage 3: lean Node 20 Alpine runtime (standalone output)

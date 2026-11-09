@@ -9,6 +9,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -26,6 +27,10 @@ public class AgencyClientRelationship extends TimestampedEntity {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
+    @Version
+    @Column(name = "version", nullable = false)
+    private Long version = 0L;
+
     @Column(name = "agency_organization_id", nullable = false)
     private UUID agencyOrganizationId;
 
@@ -34,7 +39,7 @@ public class AgencyClientRelationship extends TimestampedEntity {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 32)
-    private AgencyRelationshipStatus status = AgencyRelationshipStatus.ACTIVE;
+    private AgencyRelationshipStatus status = AgencyRelationshipStatus.PENDING;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "access_level", nullable = false, length = 32)

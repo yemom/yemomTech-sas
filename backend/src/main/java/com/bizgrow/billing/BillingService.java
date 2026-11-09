@@ -344,28 +344,53 @@ public class BillingService {
                 }
             }
 
-            String eventStatus = root.path("status").asText("");
-            if ("success".equalsIgnoreCase(eventStatus)) {
-                tx.setStatus(PaymentStatus.SUCCESS);
-                tx.setVerifiedAt(Instant.now());
-                tx.setChapaTransactionId(root.path("data").path("reference").asText(txRef));
+            // Server-side verification with Chapa before activating subscription
+            ChapaClient.ChapaVerifyResult verifyResult = chapaClient.verify(txRef);
+            if (!verifyResult.success() || !"success".equalsIgnoreCase(verifyResult.status())) {
+                log.warn("Chapa server verification failed for webhook txRef {}: {}", txRef, verifyResult.message());
+                tx.setStatus(PaymentStatus.FAILED);
+                tx.setFailureReason("Server verification failed: " + verifyResult.message());
                 transactionRepository.save(tx);
-
-                OrganizationSubscription sub = subscriptionRepository.findByOrganizationId(tx.getOrganizationId())
-                        .orElseGet(() -> createDefaultFreeSubscription(tx.getOrganizationId()));
-
-                sub.setPlan(tx.getPlan());
-                sub.setStatus(SubscriptionStatus.ACTIVE);
-                sub.setCurrentPeriodStart(Instant.now());
-                sub.setCurrentPeriodEnd(Instant.now().plus(30, ChronoUnit.DAYS));
-                subscriptionRepository.save(sub);
-
-                recordBillingHistory(tx.getOrganizationId(), tx.getId(), sub.getId(), BillingEventType.PAYMENT_SUCCESS,
-                        "Webhook confirmed payment of " + tx.getAmountEtb() + " ETB for " + tx.getPlan().getName(),
-                        tx.getAmountEtb());
-
-                log.info("Chapa webhook successfully applied payment for txRef: {}", txRef);
+                return;
             }
+
+            // Verify amount from server verification
+            if (verifyResult.amount() != null && verifyResult.amount().compareTo(tx.getAmountEtb()) != 0) {
+                log.error("Server verified amount mismatch for txRef {}: expected {} but got {}", txRef, tx.getAmountEtb(), verifyResult.amount());
+                tx.setStatus(PaymentStatus.FAILED);
+                tx.setFailureReason("Verified amount mismatch");
+                transactionRepository.save(tx);
+                return;
+            }
+
+            // Verify currency from server verification
+            if (verifyResult.currency() != null && !verifyResult.currency().equalsIgnoreCase(tx.getCurrency())) {
+                log.error("Server verified currency mismatch for txRef {}: expected {} but got {}", txRef, tx.getCurrency(), verifyResult.currency());
+                tx.setStatus(PaymentStatus.FAILED);
+                tx.setFailureReason("Verified currency mismatch");
+                transactionRepository.save(tx);
+                return;
+            }
+
+            tx.setStatus(PaymentStatus.SUCCESS);
+            tx.setVerifiedAt(Instant.now());
+            tx.setChapaTransactionId(verifyResult.chapaTransactionId() != null ? verifyResult.chapaTransactionId() : root.path("data").path("reference").asText(txRef));
+            transactionRepository.save(tx);
+
+            OrganizationSubscription sub = subscriptionRepository.findByOrganizationId(tx.getOrganizationId())
+                    .orElseGet(() -> createDefaultFreeSubscription(tx.getOrganizationId()));
+
+            sub.setPlan(tx.getPlan());
+            sub.setStatus(SubscriptionStatus.ACTIVE);
+            sub.setCurrentPeriodStart(Instant.now());
+            sub.setCurrentPeriodEnd(Instant.now().plus(30, ChronoUnit.DAYS));
+            subscriptionRepository.save(sub);
+
+            recordBillingHistory(tx.getOrganizationId(), tx.getId(), sub.getId(), BillingEventType.PAYMENT_SUCCESS,
+                    "Webhook confirmed payment of " + tx.getAmountEtb() + " ETB for " + tx.getPlan().getName(),
+                    tx.getAmountEtb());
+
+            log.info("Chapa webhook successfully verified and applied payment for txRef: {}", txRef);
 
         } catch (Exception e) {
             log.error("Failed to parse Chapa webhook payload", e);

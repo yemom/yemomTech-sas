@@ -195,34 +195,29 @@ public class ChapaClient {
             return false;
         }
 
-        byte[] sigBytes = signatureHeader.trim().getBytes(StandardCharsets.UTF_8);
+        if (rawPayload == null) {
+            log.warn("Webhook signature validation failed: raw payload is null.");
+            return false;
+        }
+
         byte[] secretBytes = webhookSecret.getBytes(StandardCharsets.UTF_8);
 
-        // 1. Direct secret hash match (constant time)
-        if (MessageDigest.isEqual(sigBytes, secretBytes)) {
-            return true;
-        }
-
-        // 2. HMAC-SHA256 signature check of rawPayload
-        if (rawPayload != null) {
-            try {
-                Mac mac = Mac.getInstance("HmacSHA256");
-                mac.init(new SecretKeySpec(secretBytes, "HmacSHA256"));
-                byte[] hash = mac.doFinal(rawPayload.getBytes(StandardCharsets.UTF_8));
-                StringBuilder hex = new StringBuilder();
-                for (byte b : hash) {
-                    hex.append(String.format("%02x", b));
-                }
-                byte[] expectedHmacBytes = hex.toString().getBytes(StandardCharsets.UTF_8);
-                if (MessageDigest.isEqual(sigBytes, expectedHmacBytes)) {
-                    return true;
-                }
-            } catch (Exception e) {
-                log.error("Failed to compute HMAC-SHA256 webhook signature", e);
+        // Strict HMAC-SHA256 signature check of raw payload using timing-safe comparison
+        try {
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(secretBytes, "HmacSHA256"));
+            byte[] hash = mac.doFinal(rawPayload.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder();
+            for (byte b : hash) {
+                hex.append(String.format("%02x", b));
             }
+            byte[] sigBytes = signatureHeader.trim().toLowerCase(Locale.ROOT).getBytes(StandardCharsets.UTF_8);
+            byte[] expectedHmacBytes = hex.toString().toLowerCase(Locale.ROOT).getBytes(StandardCharsets.UTF_8);
+            return MessageDigest.isEqual(sigBytes, expectedHmacBytes);
+        } catch (Exception e) {
+            log.error("Failed to compute HMAC-SHA256 webhook signature", e);
+            return false;
         }
-
-        return false;
     }
 
     public record ChapaInitializeResult(boolean success, String checkoutUrl, String txRef, String message) {}

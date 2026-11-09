@@ -63,6 +63,26 @@ public class GoogleCredential {
     @Column(name = "oauth_state", length = 128)
     private String oauthState;
 
+    /** Expiration timestamp for the short-lived CSRF state. */
+    @Column(name = "oauth_state_expires_at")
+    private Instant oauthStateExpiresAt;
+
+    /** Tenant-selected GA4 Property ID (e.g. "properties/123456"). */
+    @Column(name = "ga4_property_id", length = 128)
+    private String ga4PropertyId;
+
+    /** Tenant-selected Google Search Console site URL. */
+    @Column(name = "gsc_site_url", length = 2048)
+    private String gscSiteUrl;
+
+    /** Timestamp of last successful GA4 metric sync. */
+    @Column(name = "last_ga4_sync_at")
+    private Instant lastGa4SyncAt;
+
+    /** Timestamp of last successful Search Console metric sync. */
+    @Column(name = "last_gsc_sync_at")
+    private Instant lastGscSyncAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt = Instant.now();
 

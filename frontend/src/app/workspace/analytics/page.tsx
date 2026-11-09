@@ -6,7 +6,9 @@ import {
   useAnalyticsOverview,
   useDisconnectGoogle,
   useGoogleConnectUrl,
+  useGoogleAccessibleProperties,
   useGoogleConnectionStatus,
+  useSelectGoogleProperties,
   useSyncGoogleAnalytics,
   useWebsites,
 } from "@/lib/api/hooks";
@@ -19,6 +21,10 @@ export default function AnalyticsPage() {
   const [selectedWebsiteId, setSelectedWebsiteId] = useState<string>("");
   const [dateRangeDays, setDateRangeDays] = useState<number>(30);
   const [connectError, setConnectError] = useState<string | null>(null);
+  const [showConfig, setShowConfig] = useState<boolean>(false);
+  const [selectedGa4Prop, setSelectedGa4Prop] = useState<string>('');
+  const [selectedGscSite, setSelectedGscSite] = useState<string>('');
+  const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"overview" | "queries" | "pages">("overview");
 
   const websitesQuery = useWebsites(orgId, 0);
@@ -40,6 +46,8 @@ export default function AnalyticsPage() {
   const connectMutation = useGoogleConnectUrl(orgId, activeWebsiteId);
   const disconnectMutation = useDisconnectGoogle(orgId);
   const syncMutation = useSyncGoogleAnalytics(orgId);
+  const propertiesQuery = useGoogleAccessibleProperties(orgId, activeWebsiteId);
+  const selectMutation = useSelectGoogleProperties(orgId, activeWebsiteId);
 
   const isConnected = statusQuery.data?.connected ?? false;
   const overview = overviewQuery.data;
@@ -67,6 +75,21 @@ export default function AnalyticsPage() {
   const handleDisconnect = async () => {
     if (!activeWebsiteId || !confirm("Disconnect Google Analytics and Search Console for this website?")) return;
     await disconnectMutation.mutateAsync(activeWebsiteId);
+  };
+
+  const handleSaveProperties = async () => {
+    if (!activeWebsiteId) return;
+    try {
+      await selectMutation.mutateAsync({
+        ga4PropertyId: selectedGa4Prop || undefined,
+        gscSiteUrl: selectedGscSite || undefined,
+      });
+      setSaveSuccessMsg('Properties saved successfully! Data will sync using selected properties.');
+      setTimeout(() => setSaveSuccessMsg(null), 4000);
+      setShowConfig(false);
+    } catch (err: unknown) {
+      setConnectError(err instanceof Error ? err.message : 'Failed to save property configuration.');
+    }
   };
 
   const handleSync = async () => {
@@ -151,6 +174,12 @@ export default function AnalyticsPage() {
               <>
                 <Button
                   variant="secondary"
+                  onClick={() => setShowConfig(!showConfig)}
+                >
+                  {showConfig ? 'Close Settings' : 'Configure Properties'}
+                </Button>
+                <Button
+                  variant="secondary"
                   onClick={handleSync}
                   loading={syncMutation.isPending}
                 >
@@ -175,6 +204,96 @@ export default function AnalyticsPage() {
             )}
           </div>
         </div>
+
+        {saveSuccessMsg && (
+          <div className="mt-3 p-3 bg-teal-50 border border-teal-200 rounded-md text-xs text-teal-800 font-medium">
+            {saveSuccessMsg}
+          </div>
+        )}
+
+        {/* Tenant-Specific Property & Sync Metadata */}
+        {isConnected && (
+          <div className="mt-4 pt-4 border-t border-slate-200/60 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-xs text-slate-600">
+            <div>
+              <span className="font-semibold block text-slate-700">GA4 Property:</span>
+              <span className="font-mono text-teal-800">{statusQuery.data?.ga4PropertyId || 'Not Selected (Sync skipped)'}</span>
+            </div>
+            <div>
+              <span className="font-semibold block text-slate-700">Search Console Site:</span>
+              <span className="font-mono text-teal-800 truncate block" title={statusQuery.data?.gscSiteUrl || ''}>
+                {statusQuery.data?.gscSiteUrl || 'Not Selected (Sync skipped)'}
+              </span>
+            </div>
+            <div>
+              <span className="font-semibold block text-slate-700">Last GA4 Sync:</span>
+              <span>{statusQuery.data?.lastGa4SyncAt ? new Date(statusQuery.data.lastGa4SyncAt).toLocaleString() : 'Never'}</span>
+            </div>
+            <div>
+              <span className="font-semibold block text-slate-700">Last GSC Sync:</span>
+              <span>{statusQuery.data?.lastGscSyncAt ? new Date(statusQuery.data.lastGscSyncAt).toLocaleString() : 'Never'}</span>
+            </div>
+          </div>
+        )}
+
+        {/* Collapsible Property Selection Form */}
+        {isConnected && showConfig && (
+          <div className="mt-4 p-4 rounded-lg bg-white border border-teal-200 shadow-sm space-y-4">
+            <h4 className="text-sm font-semibold text-slate-900">Configure Multi-Tenant Properties</h4>
+            <p className="text-xs text-slate-500">
+              Select the specific GA4 Property and Search Console site for this website to enforce strict tenant isolation.
+            </p>
+            {propertiesQuery.isLoading ? (
+              <div className="flex items-center gap-2 text-xs text-slate-500 py-2">
+                <Spinner className="size-4" /> Fetching accessible properties from Google APIs...
+              </div>
+            ) : propertiesQuery.isError ? (
+              <div className="text-xs text-red-600">
+                Could not load properties from Google. Please ensure permissions are granted.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    GA4 Property
+                  </label>
+                  <select
+                    value={selectedGa4Prop || propertiesQuery.data?.selectedGa4PropertyId || ''}
+                    onChange={(e) => setSelectedGa4Prop(e.target.value)}
+                    className="w-full rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-800 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                  >
+                    <option value="">-- Select GA4 Property --</option>
+                    {propertiesQuery.data?.ga4Properties?.map((p) => (
+                      <option key={p.propertyId} value={p.propertyId}>
+                        {p.displayName} ({p.propertyId})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Search Console Site
+                  </label>
+                  <select
+                    value={selectedGscSite || propertiesQuery.data?.selectedGscSiteUrl || ''}
+                    onChange={(e) => setSelectedGscSite(e.target.value)}
+                    className="w-full rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-800 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                  >
+                    <option value="">-- Select Search Console Site --</option>
+                    {propertiesQuery.data?.gscSites?.map((s) => (
+                      <option key={s.siteUrl} value={s.siteUrl}>
+                        {s.siteUrl} ({s.permissionLevel})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <Button variant="secondary" onClick={() => setShowConfig(false)}>Cancel</Button>
+              <Button variant="primary" onClick={handleSaveProperties} loading={selectMutation.isPending}>Save Properties</Button>
+            </div>
+          </div>
+        )}
       </Card>
 
       {/* Overview Metrics Cards */}

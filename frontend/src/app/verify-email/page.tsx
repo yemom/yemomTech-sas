@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
-import { Button, ErrorCallout, PageLoader } from "@/components/ui";
+import { Button, PageLoader } from "@/components/ui";
 import { errorMessage } from "@/lib/api/client";
 import { useVerifyEmail } from "@/lib/api/hooks";
 
@@ -31,7 +31,7 @@ function VerifyEmailContent() {
         setStatus("error");
         setErrorMsg(errorMessage(err));
       });
-  }, [token]);
+  }, [token, verifyMutation]);
 
   return (
     <div className="flex min-h-screen items-center justify-center px-6 py-12">

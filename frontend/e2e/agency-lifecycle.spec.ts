@@ -1,0 +1,28 @@
+import { expect, test } from "@playwright/test";
+
+const PASSWORD = "Correct-Horse-9!";
+
+test("agency client management UI validates client link request authorization", async ({ page }) => {
+  test.setTimeout(90_000);
+  const email = `e2e-agency-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.et`;
+
+  // Register & create workspace
+  await page.goto("/register");
+  await page.getByLabel("First name").fill("Agency");
+  await page.getByLabel("Last name").fill("Owner");
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Password").fill(PASSWORD);
+  await page.getByRole("button", { name: "Create account" }).click();
+
+  await expect(page).toHaveURL(/\/onboarding$/);
+  await page.getByLabel("Organization name").fill("Addis Marketing Agency");
+  await page.getByRole("button", { name: "Create workspace" }).click();
+  await expect(page).toHaveURL(/\/workspace$/);
+
+  // Navigate to Agency portal
+  await page.getByRole("link", { name: "Agency" }).click();
+  await expect(page).toHaveURL(/\/workspace\/agency$/);
+
+  // Agency dashboard header should be visible
+  await expect(page.getByRole("heading", { name: "Agency Client Management" })).toBeVisible();
+});

@@ -8,7 +8,9 @@ import com.YemomBizGrow.integration.google.dto.AnalyticsDailyPoint;
 import com.YemomBizGrow.integration.google.dto.AnalyticsOverviewResponse;
 import com.YemomBizGrow.integration.google.dto.GoogleCallbackRequest;
 import com.YemomBizGrow.integration.google.dto.GoogleConnectUrlResponse;
+import com.YemomBizGrow.integration.google.dto.GoogleAccessibleResourcesResponse;
 import com.YemomBizGrow.integration.google.dto.GoogleConnectionStatusResponse;
+import com.YemomBizGrow.integration.google.dto.GooglePropertySelectionRequest;
 import com.YemomBizGrow.membership.AccessControlService;
 import com.YemomBizGrow.membership.Permission;
 import com.YemomBizGrow.website.Website;
@@ -21,6 +23,7 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -83,7 +86,11 @@ public class GoogleIntegrationService {
                         cred.getGoogleAccountId(),
                         cred.getCreatedAt(),
                         cred.getTokenExpiry(),
-                        cred.getScopes()))
+                        cred.getScopes(),
+                        cred.getGa4PropertyId(),
+                        cred.getGscSiteUrl(),
+                        cred.getLastGa4SyncAt(),
+                        cred.getLastGscSyncAt()))
                 .orElseGet(() -> GoogleConnectionStatusResponse.notConnected(websiteId));
     }
 
@@ -104,11 +111,16 @@ public class GoogleIntegrationService {
                     return c;
                 });
 
+        if (googleProps.getClientId().isBlank() || googleProps.getClientSecret().isBlank()) {
+            throw new BadRequestException("Google integration credentials (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET) are missing");
+        }
+
         credential.setOauthState(state);
+        credential.setOauthStateExpiresAt(Instant.now().plus(Duration.ofMinutes(15)));
         credential.setUpdatedAt(Instant.now());
         credentialRepository.save(credential);
 
-        String clientId = googleProps.getClientId().isBlank() ? "dev-client-id" : googleProps.getClientId();
+        String clientId = googleProps.getClientId();
         String redirectUri = googleProps.getRedirectUri();
 
         String authUrl = UriComponentsBuilder.fromHttpUrl(GOOGLE_AUTH_ENDPOINT)
@@ -136,6 +148,13 @@ public class GoogleIntegrationService {
 
         if (credential.getOauthState() == null || !credential.getOauthState().equals(request.state())) {
             throw new BadRequestException("Invalid or expired OAuth state parameter");
+        }
+
+        if (credential.getOauthStateExpiresAt() != null && Instant.now().isAfter(credential.getOauthStateExpiresAt())) {
+            credential.setOauthState(null);
+            credential.setOauthStateExpiresAt(null);
+            credentialRepository.save(credential);
+            throw new BadRequestException("OAuth state has expired. Please initiate connection again.");
         }
 
         if (googleProps.getClientId().isBlank() || googleProps.getClientSecret().isBlank()) {
@@ -169,6 +188,7 @@ public class GoogleIntegrationService {
         credential.setTokenExpiry(Instant.now().plusSeconds(tokens.expiresIn()));
         credential.setScopes(tokens.scope() != null && !tokens.scope().isBlank() ? tokens.scope() : DEFAULT_SCOPES);
         credential.setOauthState(null); // Clear state after use
+        credential.setOauthStateExpiresAt(null);
         credential.setUpdatedAt(Instant.now());
         credentialRepository.save(credential);
 
@@ -220,8 +240,10 @@ public class GoogleIntegrationService {
         LocalDate startDate = endDate.minusDays(30);
 
         try {
-            // Real GA4 query if property ID is provided
-            String propertyId = googleProps.getGa4PropertyId();
+            // Real GA4 query using tenant's stored property ID, falling back to global config
+            String propertyId = (cred.getGa4PropertyId() != null && !cred.getGa4PropertyId().isBlank())
+                    ? cred.getGa4PropertyId()
+                    : googleProps.getGa4PropertyId();
             if (propertyId != null && !propertyId.isBlank()) {
                 List<GoogleOAuthClient.Ga4DailyMetric> gaMetrics = oAuthClient.fetchGa4DailyMetrics(
                         accessToken, propertyId, startDate, endDate
@@ -244,8 +266,10 @@ public class GoogleIntegrationService {
                 }
             }
 
-            // Real Search Console query using website domain / URL
-            String siteUrl = website.getDomain().startsWith("http") ? website.getDomain() : "https://" + website.getDomain();
+            // Real Search Console query using tenant's stored site URL or website domain
+            String siteUrl = (cred.getGscSiteUrl() != null && !cred.getGscSiteUrl().isBlank())
+                    ? cred.getGscSiteUrl()
+                    : (website.getDomain().startsWith("http") ? website.getDomain() : "https://" + website.getDomain());
             List<GoogleOAuthClient.GscDailyMetric> gscMetrics = oAuthClient.fetchGscDailyMetrics(
                     accessToken, siteUrl, startDate, endDate
             );
@@ -432,5 +456,70 @@ public class GoogleIntegrationService {
     private Website requireWebsite(UUID organizationId, UUID websiteId) {
         return websiteRepository.findByIdAndOrganizationId(websiteId, organizationId)
                 .orElseThrow(() -> new NotFoundException("Website not found: " + websiteId));
+    }
+
+    @Transactional(readOnly = true)
+    public GoogleAccessibleResourcesResponse listAccessibleResources(UUID actorUserId, UUID organizationId, UUID websiteId) {
+        accessControlService.requirePermission(actorUserId, organizationId, Permission.ORG_VIEW);
+        requireWebsite(organizationId, websiteId);
+
+        GoogleCredential cred = credentialRepository.findByOrganizationIdAndWebsiteId(organizationId, websiteId)
+                .orElseThrow(() -> new BadRequestException("Google account is not connected for website: " + websiteId));
+
+        String accessToken = getValidAccessToken(cred);
+
+        List<GoogleOAuthClient.Ga4PropertyItem> gaProps = oAuthClient.listGa4Properties(accessToken);
+        List<GoogleOAuthClient.GscSiteItem> gscSites = oAuthClient.listSearchConsoleSites(accessToken);
+
+        List<GoogleAccessibleResourcesResponse.Ga4PropertyOption> propOptions = gaProps.stream()
+                .map(p -> new GoogleAccessibleResourcesResponse.Ga4PropertyOption(p.propertyId(), p.displayName()))
+                .toList();
+
+        List<GoogleAccessibleResourcesResponse.GscSiteOption> siteOptions = gscSites.stream()
+                .map(s -> new GoogleAccessibleResourcesResponse.GscSiteOption(s.siteUrl(), s.permissionLevel()))
+                .toList();
+
+        return new GoogleAccessibleResourcesResponse(
+                propOptions,
+                siteOptions,
+                cred.getGa4PropertyId(),
+                cred.getGscSiteUrl()
+        );
+    }
+
+    @Transactional
+    public GoogleConnectionStatusResponse selectProperties(
+            UUID actorUserId,
+            UUID organizationId,
+            UUID websiteId,
+            GooglePropertySelectionRequest request
+    ) {
+        accessControlService.requirePermission(actorUserId, organizationId, Permission.WEBSITE_MANAGE);
+        requireWebsite(organizationId, websiteId);
+
+        GoogleCredential cred = credentialRepository.findByOrganizationIdAndWebsiteId(organizationId, websiteId)
+                .orElseThrow(() -> new BadRequestException("Google account is not connected for website: " + websiteId));
+
+        if (request.ga4PropertyId() != null) {
+            cred.setGa4PropertyId(request.ga4PropertyId().trim());
+        }
+        if (request.gscSiteUrl() != null) {
+            cred.setGscSiteUrl(request.gscSiteUrl().trim());
+        }
+        cred.setUpdatedAt(Instant.now());
+        GoogleCredential saved = credentialRepository.save(cred);
+
+        return new GoogleConnectionStatusResponse(
+                true,
+                saved.getWebsiteId(),
+                saved.getGoogleAccountId(),
+                saved.getCreatedAt(),
+                saved.getTokenExpiry(),
+                saved.getScopes(),
+                saved.getGa4PropertyId(),
+                saved.getGscSiteUrl(),
+                saved.getLastGa4SyncAt(),
+                saved.getLastGscSyncAt()
+        );
     }
 }

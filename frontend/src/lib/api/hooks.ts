@@ -26,8 +26,10 @@ import type {
   ComprehensiveReport,
   CreateCampaignRequest,
   Dashboard,
+  GoogleAccessibleResources,
   GoogleConnectUrl,
   GoogleConnectionStatus,
+  GooglePropertySelectionRequest,
   InitializePaymentRequest,
   InitializePaymentResponse,
   Invitation,
@@ -680,6 +682,39 @@ export function useDisconnectGoogle(orgId: string) {
       });
       void client.invalidateQueries({
         queryKey: ["organizations", orgId, "analytics"],
+      });
+    },
+  });
+}
+
+export function useGoogleAccessibleProperties(orgId: string, websiteId?: string) {
+  return useQuery({
+    queryKey: ['organizations', orgId, 'integrations', 'google', websiteId, 'properties'],
+    queryFn: () =>
+      api.get<GoogleAccessibleResources>(
+        `/organizations/${orgId}/integrations/google/properties?websiteId=${websiteId}`,
+      ),
+    enabled: Boolean(orgId && websiteId),
+  });
+}
+
+export function useSelectGoogleProperties(orgId: string, websiteId?: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: GooglePropertySelectionRequest) =>
+      api.post<GoogleConnectionStatus>(
+        `/organizations/${orgId}/integrations/google/properties?websiteId=${websiteId}`,
+        body,
+      ),
+    onSuccess: () => {
+      void client.invalidateQueries({
+        queryKey: queryKeys.googleStatus(orgId, websiteId ?? ''),
+      });
+      void client.invalidateQueries({
+        queryKey: ['organizations', orgId, 'integrations', 'google', websiteId, 'properties'],
+      });
+      void client.invalidateQueries({
+        queryKey: ['organizations', orgId, 'analytics'],
       });
     },
   });

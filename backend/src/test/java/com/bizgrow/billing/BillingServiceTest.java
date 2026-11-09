@@ -123,7 +123,10 @@ class BillingServiceTest {
     @DisplayName("initializePayment with Free plan switches immediately")
     void testInitializeFreePlan() {
         when(planRepository.findBySlug("free")).thenReturn(Optional.of(freePlan));
-        when(subscriptionRepository.findByOrganizationId(orgId)).thenReturn(Optional.empty());
+        OrganizationSubscription existingSub = new OrganizationSubscription();
+        existingSub.setId(UUID.randomUUID());
+        existingSub.setOrganizationId(orgId);
+        when(subscriptionRepository.findByOrganizationId(orgId)).thenReturn(Optional.of(existingSub));
         when(subscriptionRepository.save(any(OrganizationSubscription.class)))
                 .thenAnswer(inv -> inv.getArgument(0));
 
@@ -139,10 +142,6 @@ class BillingServiceTest {
     @DisplayName("initializePayment with paid plan initializes Chapa session")
     void testInitializePaidPlan() {
         when(planRepository.findBySlug("starter")).thenReturn(Optional.of(starterPlan));
-        when(subscriptionRepository.findByOrganizationId(orgId)).thenReturn(Optional.empty());
-        when(planRepository.findBySlug("free")).thenReturn(Optional.of(freePlan));
-        when(subscriptionRepository.save(any(OrganizationSubscription.class)))
-                .thenAnswer(inv -> inv.getArgument(0));
         when(transactionRepository.save(any(PaymentTransaction.class)))
                 .thenAnswer(inv -> inv.getArgument(0));
 
@@ -249,5 +248,56 @@ class BillingServiceTest {
 
         assertThat(resp.cancelAtPeriodEnd()).isTrue();
         assertThat(currentSub.isCancelAtPeriodEnd()).isTrue();
+    }
+    @Test
+    @DisplayName("handleWebhook server verification failure rejects activation")
+    void testWebhookServerVerificationFails() {
+        String txRef = "TX-HOOK-FAIL";
+        String payload = "{\"status\":\"success\",\"data\":{\"tx_ref\":\"" + txRef + "\",\"amount\":\"999.00\"}}";
+        PaymentTransaction tx = new PaymentTransaction();
+        tx.setId(UUID.randomUUID());
+        tx.setTxRef(txRef);
+        tx.setOrganizationId(orgId);
+        tx.setAmountEtb(new BigDecimal("999.00"));
+        tx.setCurrency("ETB");
+        tx.setStatus(PaymentStatus.PENDING);
+
+        when(chapaClient.validateWebhookSignature("valid-sig", payload)).thenReturn(true);
+        when(transactionRepository.findByTxRef(txRef)).thenReturn(Optional.of(tx));
+        when(chapaClient.verify(txRef)).thenReturn(new ChapaClient.ChapaVerifyResult(false, "failed", txRef, null, null, null, "Declined"));
+
+        billingService.handleWebhook("valid-sig", payload);
+
+        assertThat(tx.getStatus()).isEqualTo(PaymentStatus.FAILED);
+        verify(subscriptionRepository, never()).save(any(OrganizationSubscription.class));
+    }
+
+    @Test
+    @DisplayName("handleWebhook server verification success activates subscription")
+    void testWebhookServerVerificationSucceeds() {
+        String txRef = "TX-HOOK-OK";
+        String payload = "{\"status\":\"success\",\"data\":{\"tx_ref\":\"" + txRef + "\",\"amount\":\"999.00\"}}";
+        PaymentTransaction tx = new PaymentTransaction();
+        tx.setId(UUID.randomUUID());
+        tx.setTxRef(txRef);
+        tx.setOrganizationId(orgId);
+        tx.setPlan(starterPlan);
+        tx.setAmountEtb(new BigDecimal("999.00"));
+        tx.setCurrency("ETB");
+        tx.setStatus(PaymentStatus.PENDING);
+
+        when(chapaClient.validateWebhookSignature("valid-sig", payload)).thenReturn(true);
+        when(transactionRepository.findByTxRef(txRef)).thenReturn(Optional.of(tx));
+        when(chapaClient.verify(txRef)).thenReturn(new ChapaClient.ChapaVerifyResult(true, "success", txRef, "CHAPA-123", new BigDecimal("999.00"), "ETB", "Verified"));
+        OrganizationSubscription existingSub = new OrganizationSubscription();
+        existingSub.setId(UUID.randomUUID());
+        existingSub.setOrganizationId(orgId);
+        when(subscriptionRepository.findByOrganizationId(orgId)).thenReturn(Optional.of(existingSub));
+        when(subscriptionRepository.save(any(OrganizationSubscription.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        billingService.handleWebhook("valid-sig", payload);
+
+        assertThat(tx.getStatus()).isEqualTo(PaymentStatus.SUCCESS);
+        verify(subscriptionRepository).save(any(OrganizationSubscription.class));
     }
 }

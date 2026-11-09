@@ -57,7 +57,7 @@ function BillingContent() {
 
   // Queries & Mutations
   const { data: plans, isLoading: loadingPlans } = usePlans();
-  const { data: subscription, isLoading: loadingSub, refetch: refetchSub } = useSubscription(orgId);
+  const { data: subscription, refetch: refetchSub } = useSubscription(orgId);
   const { data: verifyResult, isLoading: verifying } = useVerifyPayment(orgId, txRefToVerify ?? "");
   const { data: transactionsPage, isLoading: loadingTx } = usePaymentTransactions(orgId);
   const { data: historyPage, isLoading: loadingHistory } = useBillingHistory(orgId);
@@ -87,12 +87,7 @@ function BillingContent() {
       });
 
       if (res.checkoutUrl) {
-        if (res.checkoutUrl.startsWith("http")) {
-          window.location.href = res.checkoutUrl;
-        } else {
-          // Internal redirect for free plan
-          window.location.href = res.checkoutUrl;
-        }
+        window.location.assign(res.checkoutUrl);
       }
     } catch (err: unknown) {
       setCheckoutError((err as Error).message ?? "Failed to initialize payment.");

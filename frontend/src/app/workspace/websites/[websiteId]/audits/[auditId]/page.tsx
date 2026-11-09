@@ -12,7 +12,6 @@ import {
 } from "@/components/ui";
 import { useSeoAudit, useSeoAuditIssues, useSeoAuditPages } from "@/lib/api/hooks";
 import { useAuth } from "@/lib/auth/auth-context";
-import type { SeoIssueSeverity, SeoIssueCategory } from "@/lib/api/types";
 
 export default function AuditDetailPage() {
   const params = useParams<{ websiteId: string; auditId: string }>();
@@ -24,7 +23,7 @@ export default function AuditDetailPage() {
   const [severityFilter, setSeverityFilter] = useState<string>("");
   const [categoryFilter, setCategoryFilter] = useState<string>("");
   const [issuesPage, setIssuesPage] = useState(0);
-  const [crawledPagesPage, setCrawledPagesPage] = useState(0);
+  const [crawledPagesPage] = useState(0);
 
   const auditQuery = useSeoAudit(orgId, websiteId, auditId);
   const issuesQuery = useSeoAuditIssues(

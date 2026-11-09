@@ -22,17 +22,14 @@ import {
   useLeads,
   usePipelineSummary,
   useTransitionLeadStage,
-  useUpdateLead,
 } from "@/lib/api/hooks";
 import { can } from "@/lib/api/permissions";
 import {
-  leadActivitySchema,
   leadSchema,
-  type LeadActivityInput,
   type LeadInput,
 } from "@/lib/api/schemas";
 import { useAuth } from "@/lib/auth/auth-context";
-import type { Lead, LeadActivity, LeadStage } from "@/lib/api/types";
+import type { Lead, LeadStage } from "@/lib/api/types";
 
 const STAGES: { key: LeadStage; label: string }[] = [
   { key: "NEW", label: "New Inquiry" },

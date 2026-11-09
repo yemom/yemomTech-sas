@@ -70,6 +70,9 @@ public class GoogleOAuthClient {
             double position
     ) {}
 
+    public record Ga4PropertyItem(String propertyId, String displayName) {}
+    public record GscSiteItem(String siteUrl, String permissionLevel) {}
+
     public TokenResponse exchangeAuthorizationCode(
             String code,
             String clientId,
@@ -325,5 +328,84 @@ public class GoogleOAuthClient {
                         + "="
                         + URLEncoder.encode(entry.getValue(), StandardCharsets.UTF_8))
                 .collect(Collectors.joining("&"));
+    }
+
+    public List<Ga4PropertyItem> listGa4Properties(String accessToken) {
+        if (accessToken == null || accessToken.isBlank()) {
+            return List.of();
+        }
+        try {
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create("https://analyticsadmin.googleapis.com/v1beta/accountSummaries"))
+                    .timeout(Duration.ofSeconds(15))
+                    .header("Authorization", "Bearer " + accessToken)
+                    .GET()
+                    .build();
+
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            if (response.statusCode() != 200) {
+                log.warn("Failed to list GA4 properties: status={}, body={}", response.statusCode(), response.body());
+                return List.of();
+            }
+
+            JsonNode root = objectMapper.readTree(response.body());
+            List<Ga4PropertyItem> list = new ArrayList<>();
+            JsonNode summaries = root.path("accountSummaries");
+            if (summaries.isArray()) {
+                for (JsonNode acc : summaries) {
+                    JsonNode propertySummaries = acc.path("propertySummaries");
+                    if (propertySummaries.isArray()) {
+                        for (JsonNode prop : propertySummaries) {
+                            String propId = prop.path("property").asText("");
+                            String displayName = prop.path("displayName").asText(propId);
+                            if (!propId.isBlank()) {
+                                list.add(new Ga4PropertyItem(propId, displayName));
+                            }
+                        }
+                    }
+                }
+            }
+            return list;
+        } catch (Exception e) {
+            log.warn("Error listing GA4 properties from Google API: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
+    public List<GscSiteItem> listSearchConsoleSites(String accessToken) {
+        if (accessToken == null || accessToken.isBlank()) {
+            return List.of();
+        }
+        try {
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create("https://www.googleapis.com/webmasters/v3/sites"))
+                    .timeout(Duration.ofSeconds(15))
+                    .header("Authorization", "Bearer " + accessToken)
+                    .GET()
+                    .build();
+
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            if (response.statusCode() != 200) {
+                log.warn("Failed to list Search Console sites: status={}, body={}", response.statusCode(), response.body());
+                return List.of();
+            }
+
+            JsonNode root = objectMapper.readTree(response.body());
+            List<GscSiteItem> list = new ArrayList<>();
+            JsonNode siteEntries = root.path("siteEntry");
+            if (siteEntries.isArray()) {
+                for (JsonNode entry : siteEntries) {
+                    String siteUrl = entry.path("siteUrl").asText("");
+                    String perm = entry.path("permissionLevel").asText("siteOwner");
+                    if (!siteUrl.isBlank()) {
+                        list.add(new GscSiteItem(siteUrl, perm));
+                    }
+                }
+            }
+            return list;
+        } catch (Exception e) {
+            log.warn("Error listing Search Console sites from Google API: {}", e.getMessage());
+            return List.of();
+        }
     }
 }

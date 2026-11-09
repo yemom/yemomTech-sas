@@ -2,7 +2,9 @@ package com.YemomBizGrow.integration.google;
 
 import com.YemomBizGrow.common.security.CurrentUser;
 import com.YemomBizGrow.integration.google.dto.GoogleCallbackRequest;
+import com.YemomBizGrow.integration.google.dto.GoogleAccessibleResourcesResponse;
 import com.YemomBizGrow.integration.google.dto.GoogleConnectUrlResponse;
+import com.YemomBizGrow.integration.google.dto.GooglePropertySelectionRequest;
 import com.YemomBizGrow.integration.google.dto.GoogleConnectionStatusResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -78,5 +80,24 @@ public class GoogleIntegrationController {
             @RequestParam UUID websiteId) {
         UUID actorId = CurrentUser.require().id();
         googleIntegrationService.syncAnalytics(actorId, organizationId, websiteId);
+    }
+
+    @GetMapping("/properties")
+    @Operation(summary = "List accessible GA4 properties and Search Console sites for selection")
+    public GoogleAccessibleResourcesResponse listProperties(
+            @PathVariable UUID organizationId,
+            @RequestParam UUID websiteId) {
+        UUID actorId = CurrentUser.require().id();
+        return googleIntegrationService.listAccessibleResources(actorId, organizationId, websiteId);
+    }
+
+    @PostMapping("/properties")
+    @Operation(summary = "Select GA4 property and Search Console site for website integration")
+    public GoogleConnectionStatusResponse selectProperties(
+            @PathVariable UUID organizationId,
+            @RequestParam UUID websiteId,
+            @Valid @RequestBody GooglePropertySelectionRequest request) {
+        UUID actorId = CurrentUser.require().id();
+        return googleIntegrationService.selectProperties(actorId, organizationId, websiteId, request);
     }
 }

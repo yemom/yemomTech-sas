@@ -5,7 +5,6 @@ import { useAuth } from "@/lib/auth/auth-context";
 import {
   useAgencyOverview,
   useLinkAgencyClient,
-  useUpdateAgencyClient,
   useRevokeAgencyClient,
 } from "@/lib/api/hooks";
 import type { AgencyAccessLevel, AgencyClientSummary } from "@/lib/api/types";
@@ -31,7 +30,6 @@ export default function AgencyPage() {
 
   const { data: overview, isLoading, error } = useAgencyOverview(orgId);
   const linkMutation = useLinkAgencyClient(orgId);
-  const updateMutation = useUpdateAgencyClient(orgId);
   const revokeMutation = useRevokeAgencyClient(orgId);
 
   const handleLink = async (e: React.FormEvent) => {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Badge, Button, Card, EmptyState, PageLoader } from "@/components/ui";
+import { Button, Card, EmptyState, PageLoader } from "@/components/ui";
 import { useAuditLogs } from "@/lib/api/hooks";
 import { useAuth } from "@/lib/auth/auth-context";
 

@@ -147,6 +147,10 @@ public class AgencyService {
         AgencyClientRelationship rel = relationshipRepository.findByIdAndClientOrganizationId(relationshipId, clientOrgId)
                 .orElseThrow(() -> new NotFoundException("Agency request not found with ID: " + relationshipId));
 
+        if (rel.getStatus() != AgencyRelationshipStatus.PENDING) {
+            throw new ConflictException("Only PENDING agency requests can be rejected. Current status: " + rel.getStatus());
+        }
+
         rel.setStatus(AgencyRelationshipStatus.REJECTED);
         relationshipRepository.save(rel);
 
@@ -165,6 +169,10 @@ public class AgencyService {
 
         AgencyClientRelationship rel = relationshipRepository.findByIdAndClientOrganizationId(relationshipId, clientOrgId)
                 .orElseThrow(() -> new NotFoundException("Agency relationship not found with ID: " + relationshipId));
+
+        if (rel.getStatus() != AgencyRelationshipStatus.ACTIVE) {
+            throw new ConflictException("Only ACTIVE agency relationships can be revoked. Current status: " + rel.getStatus());
+        }
 
         rel.setStatus(AgencyRelationshipStatus.REVOKED);
         relationshipRepository.save(rel);
@@ -254,12 +262,14 @@ public class AgencyService {
         AgencyClientRelationship rel = relationshipRepository.findByIdAndAgencyOrganizationId(relationshipId, agencyOrgId)
                 .orElseThrow(() -> new NotFoundException("Client relationship not found with ID: " + relationshipId));
 
-        // Security: Agency cannot approve its own relationship to ACTIVE!
-        if (request.status() != null) {
-            if (request.status() == AgencyRelationshipStatus.ACTIVE && rel.getStatus() == AgencyRelationshipStatus.PENDING) {
-                throw new BadRequestException("Agency cannot self-approve pending relationships. Approval must be granted by the client organization.");
-            }
-            rel.setStatus(request.status());
+        if (rel.getStatus() == AgencyRelationshipStatus.REVOKED || rel.getStatus() == AgencyRelationshipStatus.REJECTED) {
+            throw new BadRequestException("Cannot modify relationship in " + rel.getStatus() + " status.");
+        }
+
+        // Security: Agency cannot alter relationship status.
+        // All status transitions are strictly controlled by the client organization.
+        if (request.status() != null && request.status() != rel.getStatus()) {
+            throw new BadRequestException("Agency cannot change relationship status. Status transitions are controlled exclusively by the client organization.");
         }
         if (request.accessLevel() != null) {
             rel.setAccessLevel(request.accessLevel());
