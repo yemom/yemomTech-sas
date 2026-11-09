@@ -18,6 +18,7 @@ import type {
   AiRecommendation,
   AnalyticsOverview,
   AuditLog,
+  BillingHistory,
   Campaign,
   CampaignPerformance,
   ChatbotConfig,
@@ -25,8 +26,10 @@ import type {
   ComprehensiveReport,
   CreateCampaignRequest,
   Dashboard,
-  GoogleConnectionStatus,
   GoogleConnectUrl,
+  GoogleConnectionStatus,
+  InitializePaymentRequest,
+  InitializePaymentResponse,
   Invitation,
   InvitationAcceptance,
   Lead,
@@ -38,15 +41,19 @@ import type {
   MembershipStatus,
   MessageResponse,
   Organization,
+  OrganizationSubscription,
   Page,
+  PaymentTransaction,
   PipelineSummary,
   PublicChatMessageResponse,
   RecommendationStatus,
   SeoAudit,
   SeoCrawledPage,
   SeoIssue,
+  SubscriptionPlan,
   UpdateCampaignRequest,
   UpdateClientRelationshipRequest,
+  VerifyPaymentResponse,
   Website,
 } from "@/lib/api/types";
 
@@ -964,6 +971,91 @@ export function useComprehensiveReport(orgId: string) {
     queryKey: ["organizations", orgId, "reports", "comprehensive"],
     queryFn: () =>
       api.get<ComprehensiveReport>(`/organizations/${orgId}/reports/comprehensive`),
+    enabled: Boolean(orgId),
+  });
+}
+
+/* -------------------------------- billing hooks -------------------------------- */
+
+export function usePlans() {
+  return useQuery({
+    queryKey: ["billing", "plans"],
+    queryFn: () => api.get<SubscriptionPlan[]>("/billing/plans"),
+  });
+}
+
+export function useSubscription(orgId: string) {
+  return useQuery({
+    queryKey: ["organizations", orgId, "billing", "subscription"],
+    queryFn: () =>
+      api.get<OrganizationSubscription>(
+        `/organizations/${orgId}/billing/subscription`,
+      ),
+    enabled: Boolean(orgId),
+  });
+}
+
+export function useInitializePayment(orgId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: InitializePaymentRequest) =>
+      api.post<InitializePaymentResponse>(
+        `/organizations/${orgId}/billing/checkout`,
+        body,
+      ),
+    onSuccess: () => {
+      void client.invalidateQueries({
+        queryKey: ["organizations", orgId, "billing"],
+      });
+    },
+  });
+}
+
+export function useVerifyPayment(orgId: string, txRef: string) {
+  return useQuery({
+    queryKey: ["organizations", orgId, "billing", "verify", txRef],
+    queryFn: () =>
+      api.get<VerifyPaymentResponse>(
+        `/organizations/${orgId}/billing/verify/${txRef}`,
+      ),
+    enabled: Boolean(orgId && txRef),
+  });
+}
+
+export function useCancelSubscription(orgId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      api.post<OrganizationSubscription>(
+        `/organizations/${orgId}/billing/cancel`,
+        {},
+      ),
+    onSuccess: () => {
+      void client.invalidateQueries({
+        queryKey: ["organizations", orgId, "billing"],
+      });
+    },
+  });
+}
+
+export function usePaymentTransactions(orgId: string, page = 0, size = 20) {
+  return useQuery({
+    queryKey: ["organizations", orgId, "billing", "transactions", page],
+    queryFn: () =>
+      api.get<Page<PaymentTransaction>>(
+        `/organizations/${orgId}/billing/transactions?page=${page}&size=${size}`,
+      ),
+    enabled: Boolean(orgId),
+  });
+}
+
+export function useBillingHistory(orgId: string, page = 0, size = 20) {
+  return useQuery({
+    queryKey: ["organizations", orgId, "billing", "history", page],
+    queryFn: () =>
+      api.get<Page<BillingHistory>>(
+        `/organizations/${orgId}/billing/history?page=${page}&size=${size}`,
+      ),
     enabled: Boolean(orgId),
   });
 }

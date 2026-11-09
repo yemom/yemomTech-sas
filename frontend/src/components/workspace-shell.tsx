@@ -20,6 +20,7 @@ const NAV_ITEMS = [
   { href: "/workspace/members", label: "Members" },
   { href: "/workspace/invitations", label: "Invitations" },
   { href: "/workspace/audit-logs", label: "Activity" },
+  { href: "/workspace/billing", label: "Billing" },
   { href: "/workspace/settings", label: "Settings" },
 ];
 

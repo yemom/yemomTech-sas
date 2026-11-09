@@ -219,6 +219,10 @@ const BADGE_STYLES: Record<string, string> = {
   FULL: "bg-emerald-50 text-emerald-700 ring-emerald-200",
   READ_ONLY: "bg-blue-50 text-blue-700 ring-blue-200",
   MARKETING_ONLY: "bg-purple-50 text-purple-700 ring-purple-200",
+  TRIALING: "bg-blue-50 text-blue-700 ring-blue-200",
+  PAST_DUE: "bg-rose-50 text-rose-700 ring-rose-200",
+  CANCELLED: "bg-slate-100 text-slate-600 ring-slate-200",
+  REFUNDED: "bg-amber-50 text-amber-700 ring-amber-200",
 };
 
 export function Badge({ status, children }: { status: string; children?: ReactNode }) {

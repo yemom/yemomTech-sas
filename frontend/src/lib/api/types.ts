@@ -595,3 +595,102 @@ export interface ComprehensiveReport {
     returnOnAdSpend: number;
   };
 }
+
+
+/* -------------------------------- billing -------------------------------- */
+
+export type BillingInterval = "MONTHLY" | "YEARLY" | "ONE_TIME";
+
+export type SubscriptionStatus =
+  | "ACTIVE"
+  | "TRIALING"
+  | "PAST_DUE"
+  | "CANCELLED"
+  | "EXPIRED";
+
+export type PaymentStatus =
+  | "PENDING"
+  | "SUCCESS"
+  | "FAILED"
+  | "REFUNDED"
+  | "CANCELLED";
+
+export type PaymentProvider = "CHAPA" | "TELEBIRR" | "CBE_BIRR" | "MOCK";
+
+export interface SubscriptionPlan {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  priceEtb: number;
+  billingInterval: BillingInterval;
+  maxWebsites: number;
+  maxMembers: number;
+  maxLeads: number;
+  maxCampaigns: number;
+  hasAiInsights: boolean;
+  hasAgencyWorkspace: boolean;
+  isActive: boolean;
+  sortOrder: number;
+}
+
+export interface OrganizationSubscription {
+  id: string;
+  organizationId: string;
+  plan: SubscriptionPlan;
+  status: SubscriptionStatus;
+  currentPeriodStart: string;
+  currentPeriodEnd: string | null;
+  cancelledAt: string | null;
+  cancelAtPeriodEnd: boolean;
+  createdAt: string;
+}
+
+export interface InitializePaymentRequest {
+  planSlug: string;
+  returnUrl?: string;
+}
+
+export interface InitializePaymentResponse {
+  checkoutUrl: string;
+  txRef: string;
+  amountEtb: number;
+  currency: string;
+  planName: string;
+}
+
+export interface VerifyPaymentResponse {
+  txRef: string;
+  status: PaymentStatus;
+  amountEtb: number;
+  currency: string;
+  planName: string;
+  verifiedAt: string | null;
+  message: string;
+}
+
+export interface PaymentTransaction {
+  id: string;
+  organizationId: string;
+  planName: string;
+  txRef: string;
+  chapaTransactionId: string | null;
+  amountEtb: number;
+  currency: string;
+  status: PaymentStatus;
+  provider: PaymentProvider;
+  verifiedAt: string | null;
+  failureReason: string | null;
+  createdAt: string;
+}
+
+export interface BillingHistory {
+  id: string;
+  organizationId: string;
+  transactionId: string | null;
+  subscriptionId: string | null;
+  eventType: string;
+  description: string;
+  amountEtb: number | null;
+  createdAt: string;
+}
