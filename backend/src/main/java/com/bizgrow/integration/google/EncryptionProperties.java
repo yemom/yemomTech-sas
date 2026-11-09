@@ -8,7 +8,7 @@ import org.springframework.stereotype.Component;
 /**
  * AES-256-GCM key configuration.
  *
- * <p>Set {@code APP_SECURITY_ENCRYPTION_KEY} to a Base64-encoded 32-byte key.
+ * <p>Set {@code ENCRYPTION_KEY} (or {@code app.security.encryption.key}) to a Base64-encoded 32-byte key.
  * Generate: {@code openssl rand -base64 32}</p>
  */
 @Component
@@ -16,6 +16,6 @@ import org.springframework.stereotype.Component;
 @Getter
 @Setter
 public class EncryptionProperties {
-    /** Base64-encoded 32-byte (256-bit) AES key. Default is dev/fallback key. */
-    private String key = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
+    /** Base64-encoded 32-byte (256-bit) AES key. No hardcoded production secret. */
+    private String key = "";
 }

@@ -133,7 +133,7 @@ public class AiService {
                 .orElseGet(() -> {
                     ChatbotConfig def = new ChatbotConfig();
                     def.setOrganizationId(organizationId);
-                    def.setBotName("BizGrow Assistant");
+                    def.setBotName("YemomBizGrow Assistant");
                     def.setGreetingMessage("Selam! Welcome to our website. How can we help your business today?");
                     def.setPrimaryColor("#0f766e");
                     def.setEnabled(true);

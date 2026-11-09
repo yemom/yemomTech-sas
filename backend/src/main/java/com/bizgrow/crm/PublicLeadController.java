@@ -1,6 +1,7 @@
 package com.YemomBizGrow.crm;
 
 import com.YemomBizGrow.common.response.MessageResponse;
+import com.YemomBizGrow.common.security.ClientIpResolver;
 import com.YemomBizGrow.crm.dto.PublicLeadCaptureRequest;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
@@ -19,9 +20,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class PublicLeadController {
 
     private final LeadService leadService;
+    private final ClientIpResolver clientIpResolver;
 
-    public PublicLeadController(LeadService leadService) {
+    public PublicLeadController(LeadService leadService, ClientIpResolver clientIpResolver) {
         this.leadService = leadService;
+        this.clientIpResolver = clientIpResolver;
     }
 
     @PostMapping("/{orgSlug}")
@@ -29,17 +32,9 @@ public class PublicLeadController {
             @PathVariable String orgSlug,
             @Valid @RequestBody PublicLeadCaptureRequest request,
             HttpServletRequest servletRequest) {
-        String clientIp = extractClientIp(servletRequest);
+        String clientIp = clientIpResolver.resolveClientIp(servletRequest);
         leadService.capturePublicLead(orgSlug, request, clientIp);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(new MessageResponse("Thank you! Your message has been received."));
-    }
-
-    private String extractClientIp(HttpServletRequest request) {
-        String header = request.getHeader("X-Forwarded-For");
-        if (header != null && !header.isBlank()) {
-            return header.split(",")[0].trim();
-        }
-        return request.getRemoteAddr();
     }
 }

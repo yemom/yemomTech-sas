@@ -5,16 +5,23 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 
 @Component
@@ -25,12 +32,14 @@ public class ChapaClient {
 
     private final String secretKey;
     private final String webhookSecret;
+    private final boolean isProduction;
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
 
     public ChapaClient(
             @Value("${bizgrow.billing.chapa.secret-key:}") String secretKey,
             @Value("${bizgrow.billing.chapa.webhook-secret:}") String webhookSecret,
+            Environment environment,
             ObjectMapper objectMapper
     ) {
         this.secretKey = secretKey == null ? "" : secretKey.trim();
@@ -39,6 +48,12 @@ public class ChapaClient {
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
                 .build();
+
+        String[] active = environment.getActiveProfiles();
+        String[] profiles = active.length > 0 ? active : environment.getDefaultProfiles();
+        this.isProduction = Arrays.stream(profiles)
+                .map(p -> p.toLowerCase(Locale.ROOT))
+                .noneMatch(p -> p.equals("dev") || p.equals("test") || p.equals("local"));
     }
 
     public boolean isLiveConfigured() {
@@ -46,7 +61,7 @@ public class ChapaClient {
     }
 
     /**
-     * Initializes a transaction with Chapa or returns a simulated sandbox checkout URL.
+     * Initializes a transaction with Chapa or returns a simulated sandbox checkout URL in dev/test only.
      */
     public ChapaInitializeResult initialize(
             BigDecimal amount,
@@ -61,7 +76,11 @@ public class ChapaClient {
             String description
     ) {
         if (!isLiveConfigured()) {
-            log.info("Chapa secret key not configured or set to mock. Returning simulated checkout URL for txRef: {}", txRef);
+            if (isProduction) {
+                log.error("Refusing simulated payment initialization in production profile: Chapa secret key missing.");
+                return new ChapaInitializeResult(false, null, txRef, "Chapa credentials are not configured in production.");
+            }
+            log.info("Chapa secret key not configured or set to mock in dev/test. Returning sandbox checkout URL for txRef: {}", txRef);
             String mockCheckoutUrl = (returnUrl != null && !returnUrl.isBlank())
                     ? returnUrl + (returnUrl.contains("?") ? "&" : "?") + "tx_ref=" + txRef + "&status=success"
                     : "/workspace/billing?tx_ref=" + txRef + "&status=success";
@@ -78,8 +97,8 @@ public class ChapaClient {
             body.put("tx_ref", txRef);
             if (callbackUrl != null) body.put("callback_url", callbackUrl);
             if (returnUrl != null) body.put("return_url", returnUrl);
-            body.put("customization[title]", title != null ? title : "BizGrow Subscription");
-            body.put("customization[description]", description != null ? description : "Payment for BizGrow SaaS Plan");
+            body.put("customization[title]", title != null ? title : "YemomBizGrow Subscription");
+            body.put("customization[description]", description != null ? description : "Payment for YemomBizGrow SaaS Plan");
 
             String jsonPayload = objectMapper.writeValueAsString(body);
 
@@ -117,8 +136,12 @@ public class ChapaClient {
      */
     public ChapaVerifyResult verify(String txRef) {
         if (!isLiveConfigured()) {
-            log.info("Chapa live credentials not active; sandbox verification succeeded for txRef: {}", txRef);
-            return new ChapaVerifyResult(true, "success", txRef, "MOCK_CHAPA_" + txRef, "Sandbox verified");
+            if (isProduction) {
+                log.error("Refusing simulated transaction verification in production profile: Chapa secret key missing.");
+                return new ChapaVerifyResult(false, "failed", txRef, null, BigDecimal.ZERO, "ETB", "Chapa credentials missing in production.");
+            }
+            log.info("Chapa live credentials not active in dev/test; sandbox verification succeeded for txRef: {}", txRef);
+            return new ChapaVerifyResult(true, "success", txRef, "MOCK_CHAPA_" + txRef, null, "ETB", "Sandbox verified");
         }
 
         try {
@@ -139,29 +162,69 @@ public class ChapaClient {
 
                 if ("success".equalsIgnoreCase(status) && "success".equalsIgnoreCase(txStatus)) {
                     String chapaRef = data.path("reference").asText(txRef);
-                    return new ChapaVerifyResult(true, "success", txRef, chapaRef, "Transaction verified successfully");
+                    BigDecimal amount = null;
+                    if (data.has("amount") && !data.path("amount").isNull()) {
+                        amount = new BigDecimal(data.path("amount").asText());
+                    }
+                    String currency = data.path("currency").asText("ETB");
+
+                    return new ChapaVerifyResult(true, "success", txRef, chapaRef, amount, currency, "Transaction verified successfully");
                 } else {
-                    return new ChapaVerifyResult(false, txStatus.isBlank() ? "failed" : txStatus, txRef, null, "Transaction not successful");
+                    return new ChapaVerifyResult(false, txStatus.isBlank() ? "failed" : txStatus, txRef, null, null, null, "Transaction not successful");
                 }
             }
 
             log.warn("Chapa verify returned HTTP {}: {}", response.statusCode(), response.body());
-            return new ChapaVerifyResult(false, "failed", txRef, null, "Verification failed with status " + response.statusCode());
+            return new ChapaVerifyResult(false, "failed", txRef, null, null, null, "Verification failed with status " + response.statusCode());
 
         } catch (IOException | InterruptedException e) {
             log.error("Chapa verify exception for txRef: {}", txRef, e);
             Thread.currentThread().interrupt();
-            return new ChapaVerifyResult(false, "error", txRef, null, "Verification exception: " + e.getMessage());
+            return new ChapaVerifyResult(false, "error", txRef, null, null, null, "Verification exception: " + e.getMessage());
         }
     }
 
-    public boolean validateWebhookSignature(String signatureHeader) {
-        if (webhookSecret.isBlank()) {
-            return true; // No secret configured in dev/sandbox
+    /**
+     * Validates webhook signature using timing-safe comparison.
+     * Supports both direct secret hash match and HMAC-SHA256 signature match.
+     * Fails closed if secret or signature is missing.
+     */
+    public boolean validateWebhookSignature(String signatureHeader, String rawPayload) {
+        if (webhookSecret.isBlank() || signatureHeader == null || signatureHeader.isBlank()) {
+            log.warn("Webhook signature validation failed: missing secret or signature header.");
+            return false;
         }
-        return signatureHeader != null && signatureHeader.equals(webhookSecret);
+
+        byte[] sigBytes = signatureHeader.trim().getBytes(StandardCharsets.UTF_8);
+        byte[] secretBytes = webhookSecret.getBytes(StandardCharsets.UTF_8);
+
+        // 1. Direct secret hash match (constant time)
+        if (MessageDigest.isEqual(sigBytes, secretBytes)) {
+            return true;
+        }
+
+        // 2. HMAC-SHA256 signature check of rawPayload
+        if (rawPayload != null) {
+            try {
+                Mac mac = Mac.getInstance("HmacSHA256");
+                mac.init(new SecretKeySpec(secretBytes, "HmacSHA256"));
+                byte[] hash = mac.doFinal(rawPayload.getBytes(StandardCharsets.UTF_8));
+                StringBuilder hex = new StringBuilder();
+                for (byte b : hash) {
+                    hex.append(String.format("%02x", b));
+                }
+                byte[] expectedHmacBytes = hex.toString().getBytes(StandardCharsets.UTF_8);
+                if (MessageDigest.isEqual(sigBytes, expectedHmacBytes)) {
+                    return true;
+                }
+            } catch (Exception e) {
+                log.error("Failed to compute HMAC-SHA256 webhook signature", e);
+            }
+        }
+
+        return false;
     }
 
     public record ChapaInitializeResult(boolean success, String checkoutUrl, String txRef, String message) {}
-    public record ChapaVerifyResult(boolean success, String status, String txRef, String chapaTransactionId, String message) {}
+    public record ChapaVerifyResult(boolean success, String status, String txRef, String chapaTransactionId, BigDecimal amount, String currency, String message) {}
 }

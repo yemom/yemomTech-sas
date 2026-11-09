@@ -3,7 +3,9 @@ package com.YemomBizGrow.crm;
 import com.YemomBizGrow.audit.AuditAction;
 import com.YemomBizGrow.audit.AuditService;
 import com.YemomBizGrow.common.exception.NotFoundException;
+import com.YemomBizGrow.common.exception.TooManyRequestsException;
 import com.YemomBizGrow.common.response.PageResponse;
+import com.YemomBizGrow.common.util.TokenHasher;
 import com.YemomBizGrow.crm.dto.AddActivityRequest;
 import com.YemomBizGrow.crm.dto.CreateLeadRequest;
 import com.YemomBizGrow.crm.dto.LeadActivityResponse;
@@ -19,12 +21,17 @@ import com.YemomBizGrow.organization.OrganizationRepository;
 import com.YemomBizGrow.organization.OrganizationStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
+import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.Collections;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
@@ -36,11 +43,21 @@ public class LeadService {
 
     private static final Logger log = LoggerFactory.getLogger(LeadService.class);
 
+    private static final RedisScript<Long> INCR_EXPIRE_SCRIPT = new DefaultRedisScript<>(
+            "local current = redis.call('INCR', KEYS[1]) " +
+            "if current == 1 then " +
+            "    redis.call('EXPIRE', KEYS[1], ARGV[1]) " +
+            "end " +
+            "return current",
+            Long.class
+    );
+
     private final LeadRepository leadRepository;
     private final LeadActivityRepository activityRepository;
     private final OrganizationRepository organizationRepository;
     private final AccessControlService accessControlService;
     private final AuditService auditService;
+    private final StringRedisTemplate redisTemplate;
 
     public LeadService(
             LeadRepository leadRepository,
@@ -48,11 +65,23 @@ public class LeadService {
             OrganizationRepository organizationRepository,
             AccessControlService accessControlService,
             AuditService auditService) {
+        this(leadRepository, activityRepository, organizationRepository, accessControlService, auditService, null);
+    }
+
+    @Autowired
+    public LeadService(
+            LeadRepository leadRepository,
+            LeadActivityRepository activityRepository,
+            OrganizationRepository organizationRepository,
+            AccessControlService accessControlService,
+            AuditService auditService,
+            @Autowired(required = false) StringRedisTemplate redisTemplate) {
         this.leadRepository = leadRepository;
         this.activityRepository = activityRepository;
         this.organizationRepository = organizationRepository;
         this.accessControlService = accessControlService;
         this.auditService = auditService;
+        this.redisTemplate = redisTemplate;
     }
 
     @Transactional
@@ -291,6 +320,9 @@ public class LeadService {
             return; // Silently drop without revealing error to bot
         }
 
+        // Rate limiting: 10 submissions per 15 minutes per IP
+        enforceLeadRateLimit(clientIp);
+
         Organization organization = organizationRepository.findBySlug(orgSlug)
                 .orElseThrow(() -> new NotFoundException("Organization not found."));
 
@@ -331,5 +363,27 @@ public class LeadService {
                 Map.of("source", "WEBSITE_FORM", "stage", "NEW"));
 
         log.info("Public lead captured for org slug '{}' with lead ID {}", orgSlug, lead.getId());
+    }
+
+    private void enforceLeadRateLimit(String clientIp) {
+        if (redisTemplate == null || clientIp == null || clientIp.isBlank()) {
+            return;
+        }
+        try {
+            String key = "lead:capture:ip:" + TokenHasher.sha256Hex(clientIp);
+            Long count = redisTemplate.execute(
+                    INCR_EXPIRE_SCRIPT,
+                    Collections.singletonList(key),
+                    String.valueOf(900L) // 15 minutes window
+            );
+            if (count != null && count > 10) {
+                log.warn("Public lead submission rate limit exceeded for IP {}", clientIp);
+                throw new TooManyRequestsException("Too many submission attempts from your network. Please try again in 15 minutes.");
+            }
+        } catch (TooManyRequestsException e) {
+            throw e;
+        } catch (Exception e) {
+            log.warn("Lead rate limit check failed open: {}", e.getMessage());
+        }
     }
 }

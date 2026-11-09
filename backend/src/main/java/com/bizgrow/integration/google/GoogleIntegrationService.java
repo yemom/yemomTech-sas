@@ -21,17 +21,13 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -52,6 +48,7 @@ public class GoogleIntegrationService {
     private final AuditService auditService;
     private final EncryptionService encryptionService;
     private final GoogleIntegrationProperties googleProps;
+    private final GoogleOAuthClient oAuthClient;
 
     public GoogleIntegrationService(
             GoogleCredentialRepository credentialRepository,
@@ -61,7 +58,8 @@ public class GoogleIntegrationService {
             AccessControlService accessControlService,
             AuditService auditService,
             EncryptionService encryptionService,
-            GoogleIntegrationProperties googleProps) {
+            GoogleIntegrationProperties googleProps,
+            GoogleOAuthClient oAuthClient) {
         this.credentialRepository = credentialRepository;
         this.gaSnapshotRepository = gaSnapshotRepository;
         this.gscSnapshotRepository = gscSnapshotRepository;
@@ -70,6 +68,7 @@ public class GoogleIntegrationService {
         this.auditService = auditService;
         this.encryptionService = encryptionService;
         this.googleProps = googleProps;
+        this.oAuthClient = oAuthClient;
     }
 
     @Transactional(readOnly = true)
@@ -139,13 +138,36 @@ public class GoogleIntegrationService {
             throw new BadRequestException("Invalid or expired OAuth state parameter");
         }
 
-        // Complete connection
-        String dummyGoogleAccount = "bizgrow-connected@" + request.websiteId().toString().substring(0, 8) + ".google.com";
-        credential.setGoogleAccountId(dummyGoogleAccount);
-        credential.setAccessTokenEnc(encryptionService.encrypt("access_token_" + UUID.randomUUID()));
-        credential.setRefreshTokenEnc(encryptionService.encrypt("refresh_token_" + UUID.randomUUID()));
-        credential.setTokenExpiry(Instant.now().plusSeconds(3600));
-        credential.setScopes(DEFAULT_SCOPES);
+        if (googleProps.getClientId().isBlank() || googleProps.getClientSecret().isBlank()) {
+            throw new BadRequestException("Google integration credentials (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET) are missing");
+        }
+
+        GoogleOAuthClient.TokenResponse tokens;
+        GoogleOAuthClient.UserInfoResponse userInfo;
+        try {
+            tokens = oAuthClient.exchangeAuthorizationCode(
+                    request.code(),
+                    googleProps.getClientId(),
+                    googleProps.getClientSecret(),
+                    googleProps.getRedirectUri()
+            );
+            userInfo = oAuthClient.fetchUserInfo(tokens.accessToken());
+        } catch (Exception e) {
+            log.error("Failed to complete Google OAuth exchange for website {}", request.websiteId(), e);
+            throw new BadRequestException("Failed to authenticate with Google: " + e.getMessage());
+        }
+
+        String googleAccount = (userInfo.email() != null && !userInfo.email().isBlank())
+                ? userInfo.email()
+                : (userInfo.id() != null ? userInfo.id() : "connected-user");
+
+        credential.setGoogleAccountId(googleAccount);
+        credential.setAccessTokenEnc(encryptionService.encrypt(tokens.accessToken()));
+        if (tokens.refreshToken() != null && !tokens.refreshToken().isBlank()) {
+            credential.setRefreshTokenEnc(encryptionService.encrypt(tokens.refreshToken()));
+        }
+        credential.setTokenExpiry(Instant.now().plusSeconds(tokens.expiresIn()));
+        credential.setScopes(tokens.scope() != null && !tokens.scope().isBlank() ? tokens.scope() : DEFAULT_SCOPES);
         credential.setOauthState(null); // Clear state after use
         credential.setUpdatedAt(Instant.now());
         credentialRepository.save(credential);
@@ -156,10 +178,7 @@ public class GoogleIntegrationService {
                 AuditAction.GOOGLE_CONNECTED,
                 "Website",
                 request.websiteId(),
-                Map.of("googleAccount", dummyGoogleAccount));
-
-        // Auto-seed initial 30-day baseline snapshots for this website
-        seedBaselineSnapshots(organizationId, request.websiteId());
+                Map.of("googleAccount", googleAccount));
 
         return new GoogleConnectionStatusResponse(
                 true,
@@ -192,7 +211,87 @@ public class GoogleIntegrationService {
     public void syncAnalytics(UUID actorUserId, UUID organizationId, UUID websiteId) {
         accessControlService.requirePermission(actorUserId, organizationId, Permission.WEBSITE_MANAGE);
         Website website = requireWebsite(organizationId, websiteId);
-        seedBaselineSnapshots(organizationId, website.getId());
+
+        GoogleCredential cred = credentialRepository.findByOrganizationIdAndWebsiteId(organizationId, websiteId)
+                .orElseThrow(() -> new BadRequestException("Google account is not connected for website: " + websiteId));
+
+        String accessToken = getValidAccessToken(cred);
+        LocalDate endDate = LocalDate.now();
+        LocalDate startDate = endDate.minusDays(30);
+
+        try {
+            // Real GA4 query if property ID is provided
+            String propertyId = googleProps.getGa4PropertyId();
+            if (propertyId != null && !propertyId.isBlank()) {
+                List<GoogleOAuthClient.Ga4DailyMetric> gaMetrics = oAuthClient.fetchGa4DailyMetrics(
+                        accessToken, propertyId, startDate, endDate
+                );
+                for (GoogleOAuthClient.Ga4DailyMetric metric : gaMetrics) {
+                    GoogleAnalyticsSnapshot snapshot = gaSnapshotRepository
+                            .findByOrganizationIdAndWebsiteIdAndSnapshotDate(organizationId, websiteId, metric.date())
+                            .orElseGet(() -> {
+                                GoogleAnalyticsSnapshot s = new GoogleAnalyticsSnapshot();
+                                s.setOrganizationId(organizationId);
+                                s.setWebsiteId(websiteId);
+                                s.setSnapshotDate(metric.date());
+                                return s;
+                            });
+                    snapshot.setSessions(metric.sessions());
+                    snapshot.setUsers(metric.users());
+                    snapshot.setPageViews(metric.pageViews());
+                    snapshot.setBounceRate(BigDecimal.valueOf(metric.bounceRate()));
+                    gaSnapshotRepository.save(snapshot);
+                }
+            }
+
+            // Real Search Console query using website domain / URL
+            String siteUrl = website.getDomain().startsWith("http") ? website.getDomain() : "https://" + website.getDomain();
+            List<GoogleOAuthClient.GscDailyMetric> gscMetrics = oAuthClient.fetchGscDailyMetrics(
+                    accessToken, siteUrl, startDate, endDate
+            );
+            for (GoogleOAuthClient.GscDailyMetric metric : gscMetrics) {
+                GoogleSearchConsoleSnapshot snapshot = gscSnapshotRepository
+                        .findByOrganizationIdAndWebsiteIdAndSnapshotDate(organizationId, websiteId, metric.date())
+                        .orElseGet(() -> {
+                            GoogleSearchConsoleSnapshot s = new GoogleSearchConsoleSnapshot();
+                            s.setOrganizationId(organizationId);
+                            s.setWebsiteId(websiteId);
+                            s.setSnapshotDate(metric.date());
+                            return s;
+                        });
+                snapshot.setTotalClicks(metric.clicks());
+                snapshot.setTotalImpressions(metric.impressions());
+                snapshot.setAvgCtr(BigDecimal.valueOf(metric.ctr()));
+                snapshot.setAvgPosition(BigDecimal.valueOf(metric.position()));
+                gscSnapshotRepository.save(snapshot);
+            }
+        } catch (Exception e) {
+            log.error("Failed to sync Google analytics data for website {}", websiteId, e);
+            throw new BadRequestException("Google analytics sync failed: " + e.getMessage());
+        }
+    }
+
+    private String getValidAccessToken(GoogleCredential cred) {
+        String accessToken = encryptionService.decrypt(cred.getAccessTokenEnc());
+        if (cred.getTokenExpiry() != null && Instant.now().isAfter(cred.getTokenExpiry().minusSeconds(120))) {
+            if (cred.getRefreshTokenEnc() != null) {
+                try {
+                    String refreshToken = encryptionService.decrypt(cred.getRefreshTokenEnc());
+                    GoogleOAuthClient.TokenResponse refreshed = oAuthClient.refreshAccessToken(
+                            refreshToken,
+                            googleProps.getClientId(),
+                            googleProps.getClientSecret()
+                    );
+                    accessToken = refreshed.accessToken();
+                    cred.setAccessTokenEnc(encryptionService.encrypt(accessToken));
+                    cred.setTokenExpiry(Instant.now().plusSeconds(refreshed.expiresIn()));
+                    credentialRepository.save(cred);
+                } catch (Exception e) {
+                    log.error("Failed to refresh Google token for account {}", cred.getGoogleAccountId(), e);
+                }
+            }
+        }
+        return accessToken;
     }
 
     @Transactional(readOnly = true)
@@ -300,7 +399,7 @@ public class GoogleIntegrationService {
                 ? BigDecimal.valueOf(posSum / gscCount).setScale(2, RoundingMode.HALF_UP).doubleValue()
                 : 0.0;
 
-        // Build continuous daily points
+        // Build continuous daily points (real data or zeroes if no data recorded)
         List<AnalyticsDailyPoint> dailyMetrics = new ArrayList<>();
         LocalDate curr = start;
         while (!curr.isAfter(end)) {
@@ -328,77 +427,6 @@ public class GoogleIntegrationService {
                 topQueries,
                 devices,
                 channels);
-    }
-
-    private void seedBaselineSnapshots(UUID organizationId, UUID websiteId) {
-        LocalDate today = LocalDate.now();
-
-        for (int i = 29; i >= 0; i--) {
-            LocalDate date = today.minusDays(i);
-
-            // GA4 Snapshot
-            if (gaSnapshotRepository.findByOrganizationIdAndWebsiteIdAndSnapshotDate(organizationId, websiteId, date).isEmpty()) {
-                GoogleAnalyticsSnapshot ga = new GoogleAnalyticsSnapshot();
-                ga.setOrganizationId(organizationId);
-                ga.setWebsiteId(websiteId);
-                ga.setSnapshotDate(date);
-
-                long base = 80 + (i % 7) * 25;
-                ga.setSessions(base);
-                ga.setUsers((long) (base * 0.82));
-                ga.setNewUsers((long) (base * 0.45));
-                ga.setPageViews((long) (base * 2.4));
-                ga.setBounceRate(BigDecimal.valueOf(42.5 + (i % 5)));
-                ga.setAvgSessionSec(135 + (i % 30));
-
-                ga.setTopPages(List.of(
-                        Map.of("page", "/", "views", (long) (base * 1.1), "avgTime", 95),
-                        Map.of("page", "/services", "views", (long) (base * 0.6), "avgTime", 120),
-                        Map.of("page", "/about", "views", (long) (base * 0.4), "avgTime", 80),
-                        Map.of("page", "/contact", "views", (long) (base * 0.3), "avgTime", 140)));
-
-                ga.setDevices(List.of(
-                        Map.of("device", "Mobile", "sessions", (long) (base * 0.65)),
-                        Map.of("device", "Desktop", "sessions", (long) (base * 0.30)),
-                        Map.of("device", "Tablet", "sessions", (long) (base * 0.05))));
-
-                ga.setChannels(List.of(
-                        Map.of("channel", "Organic Search", "sessions", (long) (base * 0.45)),
-                        Map.of("channel", "Direct", "sessions", (long) (base * 0.30)),
-                        Map.of("channel", "Social", "sessions", (long) (base * 0.15)),
-                        Map.of("channel", "Referral", "sessions", (long) (base * 0.10))));
-
-                gaSnapshotRepository.save(ga);
-            }
-
-            // GSC Snapshot
-            if (gscSnapshotRepository.findByOrganizationIdAndWebsiteIdAndSnapshotDate(organizationId, websiteId, date).isEmpty()) {
-                GoogleSearchConsoleSnapshot gsc = new GoogleSearchConsoleSnapshot();
-                gsc.setOrganizationId(organizationId);
-                gsc.setWebsiteId(websiteId);
-                gsc.setSnapshotDate(date);
-
-                long impressions = 450 + (i % 10) * 40;
-                long clicks = (long) (impressions * 0.065);
-                gsc.setTotalClicks(clicks);
-                gsc.setTotalImpressions(impressions);
-                gsc.setAvgCtr(BigDecimal.valueOf(0.0650));
-                gsc.setAvgPosition(BigDecimal.valueOf(14.2 - (i % 3)));
-
-                gsc.setTopQueries(List.of(
-                        Map.of("query", "ethiopian business growth", "clicks", 32, "impressions", 420, "position", 4.2),
-                        Map.of("query", "digital marketing addis ababa", "clicks", 24, "impressions", 310, "position", 6.8),
-                        Map.of("query", "seo audit ethiopia", "clicks", 18, "impressions", 250, "position", 8.1),
-                        Map.of("query", "business automation software", "clicks", 12, "impressions", 190, "position", 11.5)));
-
-                gsc.setTopPages(List.of(
-                        Map.of("page", "/", "clicks", 45, "impressions", 620),
-                        Map.of("page", "/services", "clicks", 28, "impressions", 380),
-                        Map.of("page", "/blog", "clicks", 14, "impressions", 190)));
-
-                gscSnapshotRepository.save(gsc);
-            }
-        }
     }
 
     private Website requireWebsite(UUID organizationId, UUID websiteId) {

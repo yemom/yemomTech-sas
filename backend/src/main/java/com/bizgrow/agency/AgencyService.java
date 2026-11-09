@@ -6,6 +6,7 @@ import com.YemomBizGrow.agency.dto.LinkClientRequest;
 import com.YemomBizGrow.agency.dto.UpdateClientRelationshipRequest;
 import com.YemomBizGrow.audit.AuditAction;
 import com.YemomBizGrow.audit.AuditService;
+import com.YemomBizGrow.common.exception.BadRequestException;
 import com.YemomBizGrow.common.exception.ConflictException;
 import com.YemomBizGrow.common.exception.NotFoundException;
 import com.YemomBizGrow.crm.Lead;
@@ -69,6 +70,10 @@ public class AgencyService {
         this.auditService = auditService;
     }
 
+    /**
+     * Agency requests to link a client organization.
+     * Starts in PENDING status until approved by client organization owner/admin.
+     */
     @Transactional
     public AgencyClientSummaryResponse linkClient(UUID actorUserId, UUID agencyOrgId, LinkClientRequest request) {
         accessControlService.requirePermission(actorUserId, agencyOrgId, Permission.ORG_UPDATE);
@@ -86,23 +91,104 @@ public class AgencyService {
         }
 
         if (relationshipRepository.existsByAgencyOrganizationIdAndClientOrganizationId(agencyOrgId, clientOrg.getId())) {
-            throw new ConflictException("This client organization is already linked to your agency");
+            throw new ConflictException("A relationship already exists between your agency and this client organization");
         }
 
         AgencyClientRelationship rel = new AgencyClientRelationship();
         rel.setAgencyOrganizationId(agencyOrgId);
         rel.setClientOrganizationId(clientOrg.getId());
-        rel.setStatus(AgencyRelationshipStatus.ACTIVE);
+        rel.setStatus(AgencyRelationshipStatus.PENDING); // Security: Must be approved by client!
         rel.setAccessLevel(request.accessLevel() != null ? request.accessLevel() : AgencyAccessLevel.FULL);
         rel.setNotes(request.notes());
 
         AgencyClientRelationship saved = relationshipRepository.save(rel);
 
-        auditService.record(agencyOrgId, actorUserId, AuditAction.AGENCY_CLIENT_LINKED, "AgencyClientRelationship", saved.getId(),
-                Map.of("clientOrgId", clientOrg.getId().toString(), "clientSlug", clientOrg.getSlug()));
+        auditService.record(actorUserId, agencyOrgId, AuditAction.AGENCY_CLIENT_LINKED, "AgencyClientRelationship", saved.getId(),
+                Map.of("clientOrgId", clientOrg.getId().toString(), "clientSlug", clientOrg.getSlug(), "status", "PENDING"));
 
-        log.info("Agency org {} linked client org {} ({})", agencyOrgId, clientOrg.getId(), clientOrg.getName());
+        log.info("Agency org {} requested link to client org {} ({}) - pending client approval", agencyOrgId, clientOrg.getId(), clientOrg.getName());
         return buildClientSummary(saved, clientOrg);
+    }
+
+    /**
+     * Client organization approves an incoming agency connection request.
+     */
+    @Transactional
+    public AgencyClientSummaryResponse approveClientRequest(UUID actorUserId, UUID clientOrgId, UUID relationshipId) {
+        accessControlService.requirePermission(actorUserId, clientOrgId, Permission.ORG_UPDATE);
+
+        AgencyClientRelationship rel = relationshipRepository.findByIdAndClientOrganizationId(relationshipId, clientOrgId)
+                .orElseThrow(() -> new NotFoundException("Agency request not found with ID: " + relationshipId));
+
+        if (rel.getStatus() != AgencyRelationshipStatus.PENDING) {
+            throw new ConflictException("Only PENDING agency requests can be approved. Current status: " + rel.getStatus());
+        }
+
+        rel.setStatus(AgencyRelationshipStatus.ACTIVE);
+        AgencyClientRelationship saved = relationshipRepository.save(rel);
+
+        auditService.record(actorUserId, clientOrgId, AuditAction.AGENCY_REQUEST_APPROVED, "AgencyClientRelationship", saved.getId(),
+                Map.of("agencyOrgId", rel.getAgencyOrganizationId().toString()));
+
+        Organization clientOrg = organizationRepository.findById(clientOrgId)
+                .orElseThrow(() -> new NotFoundException("Client organization not found"));
+
+        log.info("Client org {} APPROVED agency connection request {}", clientOrgId, relationshipId);
+        return buildClientSummary(saved, clientOrg);
+    }
+
+    /**
+     * Client organization rejects an incoming agency connection request.
+     */
+    @Transactional
+    public void rejectClientRequest(UUID actorUserId, UUID clientOrgId, UUID relationshipId) {
+        accessControlService.requirePermission(actorUserId, clientOrgId, Permission.ORG_UPDATE);
+
+        AgencyClientRelationship rel = relationshipRepository.findByIdAndClientOrganizationId(relationshipId, clientOrgId)
+                .orElseThrow(() -> new NotFoundException("Agency request not found with ID: " + relationshipId));
+
+        rel.setStatus(AgencyRelationshipStatus.REJECTED);
+        relationshipRepository.save(rel);
+
+        auditService.record(actorUserId, clientOrgId, AuditAction.AGENCY_REQUEST_REJECTED, "AgencyClientRelationship", relationshipId,
+                Map.of("agencyOrgId", rel.getAgencyOrganizationId().toString()));
+
+        log.info("Client org {} REJECTED agency connection request {}", clientOrgId, relationshipId);
+    }
+
+    /**
+     * Client organization revokes an active agency relationship.
+     */
+    @Transactional
+    public void revokeByClient(UUID actorUserId, UUID clientOrgId, UUID relationshipId) {
+        accessControlService.requirePermission(actorUserId, clientOrgId, Permission.ORG_UPDATE);
+
+        AgencyClientRelationship rel = relationshipRepository.findByIdAndClientOrganizationId(relationshipId, clientOrgId)
+                .orElseThrow(() -> new NotFoundException("Agency relationship not found with ID: " + relationshipId));
+
+        rel.setStatus(AgencyRelationshipStatus.REVOKED);
+        relationshipRepository.save(rel);
+
+        auditService.record(actorUserId, clientOrgId, AuditAction.AGENCY_CLIENT_REVOKED, "AgencyClientRelationship", relationshipId,
+                Map.of("agencyOrgId", rel.getAgencyOrganizationId().toString(), "revokedBy", "CLIENT"));
+
+        log.info("Client org {} REVOKED agency access for relationship {}", clientOrgId, relationshipId);
+    }
+
+    /**
+     * Lists incoming agency requests and active agency relationships for a client organization.
+     */
+    @Transactional(readOnly = true)
+    public List<AgencyClientSummaryResponse> listClientAgencyRequests(UUID actorUserId, UUID clientOrgId) {
+        accessControlService.requirePermission(actorUserId, clientOrgId, Permission.ORG_VIEW);
+
+        List<AgencyClientRelationship> relationships = relationshipRepository.findByClientOrganizationId(clientOrgId);
+        Organization clientOrg = organizationRepository.findById(clientOrgId)
+                .orElseThrow(() -> new NotFoundException("Client organization not found"));
+
+        return relationships.stream()
+                .map(rel -> buildClientSummary(rel, clientOrg))
+                .toList();
     }
 
     @Transactional(readOnly = true)
@@ -127,15 +213,19 @@ public class AgencyService {
         List<AgencyClientSummaryResponse> clients = listClients(actorUserId, agencyOrgId);
 
         long totalClients = clients.size();
-        long activeClients = clients.stream().filter(c -> c.status() == AgencyRelationshipStatus.ACTIVE).count();
-        long totalWebsites = clients.stream().mapToLong(AgencyClientSummaryResponse::websiteCount).sum();
-        long totalLeads = clients.stream().mapToLong(AgencyClientSummaryResponse::totalLeads).sum();
+        List<AgencyClientSummaryResponse> activeList = clients.stream()
+                .filter(c -> c.status() == AgencyRelationshipStatus.ACTIVE)
+                .toList();
 
-        BigDecimal totalPipeline = clients.stream()
+        long activeClients = activeList.size();
+        long totalWebsites = activeList.stream().mapToLong(AgencyClientSummaryResponse::websiteCount).sum();
+        long totalLeads = activeList.stream().mapToLong(AgencyClientSummaryResponse::totalLeads).sum();
+
+        BigDecimal totalPipeline = activeList.stream()
                 .map(AgencyClientSummaryResponse::totalPipelineValueEtb)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        double avgSeoScore = clients.stream()
+        double avgSeoScore = activeList.stream()
                 .filter(c -> c.latestSeoScore() != null)
                 .mapToInt(AgencyClientSummaryResponse::latestSeoScore)
                 .average()
@@ -164,7 +254,11 @@ public class AgencyService {
         AgencyClientRelationship rel = relationshipRepository.findByIdAndAgencyOrganizationId(relationshipId, agencyOrgId)
                 .orElseThrow(() -> new NotFoundException("Client relationship not found with ID: " + relationshipId));
 
+        // Security: Agency cannot approve its own relationship to ACTIVE!
         if (request.status() != null) {
+            if (request.status() == AgencyRelationshipStatus.ACTIVE && rel.getStatus() == AgencyRelationshipStatus.PENDING) {
+                throw new BadRequestException("Agency cannot self-approve pending relationships. Approval must be granted by the client organization.");
+            }
             rel.setStatus(request.status());
         }
         if (request.accessLevel() != null) {
@@ -191,27 +285,55 @@ public class AgencyService {
         rel.setStatus(AgencyRelationshipStatus.REVOKED);
         relationshipRepository.save(rel);
 
-        auditService.record(agencyOrgId, actorUserId, AuditAction.AGENCY_CLIENT_REVOKED, "AgencyClientRelationship", relationshipId,
-                Map.of("clientOrgId", rel.getClientOrganizationId().toString()));
+        auditService.record(actorUserId, agencyOrgId, AuditAction.AGENCY_CLIENT_REVOKED, "AgencyClientRelationship", relationshipId,
+                Map.of("clientOrgId", rel.getClientOrganizationId().toString(), "revokedBy", "AGENCY"));
 
         log.info("Agency org {} revoked client org {}", agencyOrgId, rel.getClientOrganizationId());
     }
 
+    /**
+     * Builds client summary, enforcing access levels and status isolation:
+     * - If not ACTIVE: No confidential or operational metrics returned.
+     * - If MARKETING_ONLY: CRM sales leads and pipeline values are hidden (returns 0).
+     */
     private AgencyClientSummaryResponse buildClientSummary(AgencyClientRelationship rel, Organization clientOrg) {
         UUID clientId = clientOrg.getId();
 
-        long websiteCount = websiteRepository.countByOrganizationIdAndStatus(clientId, WebsiteStatus.ACTIVE);
+        // If relationship is not active (PENDING, REJECTED, REVOKED), zero out all operational metrics
+        if (rel.getStatus() != AgencyRelationshipStatus.ACTIVE) {
+            return new AgencyClientSummaryResponse(
+                    rel.getId(),
+                    clientOrg.getId(),
+                    clientOrg.getName(),
+                    clientOrg.getSlug(),
+                    clientOrg.getIndustry(),
+                    rel.getStatus(),
+                    rel.getAccessLevel(),
+                    0,
+                    null,
+                    0,
+                    BigDecimal.ZERO,
+                    0,
+                    rel.getCreatedAt()
+            );
+        }
 
+        long websiteCount = websiteRepository.countByOrganizationIdAndStatus(clientId, WebsiteStatus.ACTIVE);
         Optional<SeoAudit> latestAudit = seoAuditRepository.findFirstByOrganizationIdAndStatusOrderByCompletedAtDesc(clientId, SeoAuditStatus.COMPLETED);
         Integer latestScore = latestAudit.map(SeoAudit::getScore).orElse(null);
-
-        List<Lead> leads = leadRepository.findByOrganizationIdAndStatus(clientId, LeadStatus.ACTIVE);
-        long leadCount = leads.size();
-        BigDecimal totalPipeline = leads.stream()
-                .map(l -> l.getEstimatedValueEtb() != null ? l.getEstimatedValueEtb() : BigDecimal.ZERO)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-
         long activeCampaigns = campaignRepository.countByOrganizationIdAndStatus(clientId, CampaignStatus.ACTIVE);
+
+        // Security check for MARKETING_ONLY access level: Hide CRM confidential revenue data!
+        long leadCount = 0;
+        BigDecimal totalPipeline = BigDecimal.ZERO;
+
+        if (rel.getAccessLevel() != AgencyAccessLevel.MARKETING_ONLY) {
+            List<Lead> leads = leadRepository.findByOrganizationIdAndStatus(clientId, LeadStatus.ACTIVE);
+            leadCount = leads.size();
+            totalPipeline = leads.stream()
+                    .map(l -> l.getEstimatedValueEtb() != null ? l.getEstimatedValueEtb() : BigDecimal.ZERO)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+        }
 
         return new AgencyClientSummaryResponse(
                 rel.getId(),

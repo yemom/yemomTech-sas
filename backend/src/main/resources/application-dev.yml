@@ -17,6 +17,8 @@ spring:
 
 app:
   security:
+    encryption:
+      key: ${ENCRYPTION_KEY:MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=}
     jwt:
       secret: ${JWT_SECRET:dev_only_secret_do_not_use_in_production_0a1b2c3d4e5f6789abcdef}
     cors:

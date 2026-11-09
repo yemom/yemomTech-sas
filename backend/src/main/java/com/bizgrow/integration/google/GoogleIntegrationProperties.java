@@ -13,4 +13,5 @@ public class GoogleIntegrationProperties {
     private String clientId = "";
     private String clientSecret = "";
     private String redirectUri = "http://localhost:3000/api/auth/callback/google";
+    private String ga4PropertyId = "";
 }

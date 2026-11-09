@@ -36,7 +36,7 @@ public class SafeHttpClient {
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(10);
     private static final int MAX_REDIRECTS = 5;
     private static final int MAX_BODY_BYTES = 5 * 1024 * 1024; // 5 MB max response size
-    private static final String USER_AGENT = "BizGrow-SEO-Crawler/1.0 (+https://bizgrow.et/bot)";
+    private static final String USER_AGENT = "YemomBizGrow-SEO-Crawler/1.0 (+https://yemombizgrow.com/bot)";
 
     private final SsrfProtectionService ssrfProtection;
     private final HttpClient httpClient;
@@ -98,11 +98,13 @@ public class SafeHttpClient {
                 int totalRead = 0;
                 int read;
                 while ((read = in.read(buffer)) != -1) {
-                    out.write(buffer, 0, read);
                     totalRead += read;
                     if (totalRead > MAX_BODY_BYTES) {
-                        break;
+                        log.warn("Response body from {} exceeded max size limit of {} bytes", currentUri, MAX_BODY_BYTES);
+                        long elapsed = System.currentTimeMillis() - startTime;
+                        return new SafeFetchResult(targetUri, currentUri, 413, "text/plain", "Payload Too Large: exceeded 5MB", elapsed, redirectChain, false);
                     }
+                    out.write(buffer, 0, read);
                 }
                 body = out.toString(StandardCharsets.UTF_8);
             } catch (Exception e) {

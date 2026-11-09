@@ -10,9 +10,15 @@ public interface AgencyClientRelationshipRepository extends JpaRepository<Agency
 
     List<AgencyClientRelationship> findByAgencyOrganizationId(UUID agencyOrganizationId);
 
+    List<AgencyClientRelationship> findByAgencyOrganizationIdAndStatus(UUID agencyOrganizationId, AgencyRelationshipStatus status);
+
     List<AgencyClientRelationship> findByClientOrganizationId(UUID clientOrganizationId);
 
+    List<AgencyClientRelationship> findByClientOrganizationIdAndStatus(UUID clientOrganizationId, AgencyRelationshipStatus status);
+
     Optional<AgencyClientRelationship> findByIdAndAgencyOrganizationId(UUID id, UUID agencyOrganizationId);
+
+    Optional<AgencyClientRelationship> findByIdAndClientOrganizationId(UUID id, UUID clientOrganizationId);
 
     Optional<AgencyClientRelationship> findByAgencyOrganizationIdAndClientOrganizationId(UUID agencyOrganizationId, UUID clientOrganizationId);
 

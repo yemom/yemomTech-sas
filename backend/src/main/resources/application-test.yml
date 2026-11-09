@@ -16,6 +16,8 @@ spring:
 
 app:
   security:
+    encryption:
+      key: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
     jwt:
       secret: test_only_secret_0123456789abcdef0123456789abcdef0123456789abcdef
     cors:

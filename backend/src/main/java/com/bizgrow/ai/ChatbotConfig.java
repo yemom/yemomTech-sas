@@ -32,7 +32,7 @@ public class ChatbotConfig {
     private UUID organizationId;
 
     @Column(name = "bot_name", nullable = false, length = 128)
-    private String botName = "BizGrow Assistant";
+    private String botName = "YemomBizGrow Assistant";
 
     @Column(name = "greeting_message", nullable = false, columnDefinition = "TEXT")
     private String greetingMessage = "Hello! How can we assist your business today?";

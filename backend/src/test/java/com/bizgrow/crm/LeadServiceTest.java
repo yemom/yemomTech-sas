@@ -222,4 +222,23 @@ class LeadServiceTest {
         assertThat(summary.stages().get(LeadStage.WON).count()).isEqualTo(2);
         assertThat(summary.stages().get(LeadStage.LOST).count()).isEqualTo(0);
     }
+
+    @Test
+    @DisplayName("capturePublicLead throws TooManyRequestsException when IP rate limit is exceeded")
+    void capturePublicLeadRateLimitExceeded() {
+        org.springframework.data.redis.core.StringRedisTemplate mockRedis = org.mockito.Mockito.mock(org.springframework.data.redis.core.StringRedisTemplate.class);
+        when(mockRedis.execute(any(), any(), any())).thenReturn(15L); // > 10 attempts
+
+        LeadService rateLimitedService = new LeadService(
+                leadRepository, activityRepository, organizationRepository, accessControlService, auditService, mockRedis
+        );
+
+        PublicLeadCaptureRequest request = new PublicLeadCaptureRequest(
+                "Abebe", "Kebede", "abebe@example.et", "+251911223344", null, "Hello", null
+        );
+
+        assertThatThrownBy(() -> rateLimitedService.capturePublicLead("some-slug", request, "196.188.1.1"))
+                .isInstanceOf(com.YemomBizGrow.common.exception.TooManyRequestsException.class)
+                .hasMessageContaining("Too many submission attempts");
+    }
 }

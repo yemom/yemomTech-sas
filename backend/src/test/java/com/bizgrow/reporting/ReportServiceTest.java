@@ -134,7 +134,7 @@ class ReportServiceTest {
         assertThat(report.crm().wonRevenueEtb()).isEqualByComparingTo("60000.00");
 
         String csv = reportService.exportReportCsv(actorId, orgId);
-        assertThat(csv).contains("BizGrow SaaS Performance Report");
+        assertThat(csv).contains("YemomBizGrow SaaS Performance Report");
         assertThat(csv).contains("SEO,Health Score,88");
         assertThat(csv).contains("Traffic,30-Day Sessions,1500");
         assertThat(csv).contains("CRM,Won Revenue ETB,60000.00");

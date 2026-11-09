@@ -5,7 +5,6 @@ import { Badge, Button, Card, ErrorCallout, Spinner } from "@/components/ui";
 import {
   useAnalyticsOverview,
   useDisconnectGoogle,
-  useGoogleCallback,
   useGoogleConnectUrl,
   useGoogleConnectionStatus,
   useSyncGoogleAnalytics,
@@ -19,8 +18,7 @@ export default function AnalyticsPage() {
 
   const [selectedWebsiteId, setSelectedWebsiteId] = useState<string>("");
   const [dateRangeDays, setDateRangeDays] = useState<number>(30);
-  const [connectModalOpen, setConnectModalOpen] = useState(false);
-  const [simulatedCode, setSimulatedCode] = useState("auth_code_sample");
+  const [connectError, setConnectError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"overview" | "queries" | "pages">("overview");
 
   const websitesQuery = useWebsites(orgId, 0);
@@ -40,7 +38,6 @@ export default function AnalyticsPage() {
   const overviewQuery = useAnalyticsOverview(orgId, activeWebsiteId, startDate, endDate);
 
   const connectMutation = useGoogleConnectUrl(orgId, activeWebsiteId);
-  const callbackMutation = useGoogleCallback(orgId);
   const disconnectMutation = useDisconnectGoogle(orgId);
   const syncMutation = useSyncGoogleAnalytics(orgId);
 
@@ -49,28 +46,22 @@ export default function AnalyticsPage() {
 
   const handleConnect = async () => {
     if (!activeWebsiteId) return;
+    setConnectError(null);
     try {
       const res = await connectMutation.mutateAsync();
       if (res.authUrl) {
-        // If real OAuth, could redirect: window.location.href = res.authUrl;
-        // For development/demo environment, open modal with state to complete authorization
-        setConnectModalOpen(true);
+        if (typeof window !== "undefined") {
+          sessionStorage.setItem("google_oauth_website_id", activeWebsiteId);
+          sessionStorage.setItem("google_oauth_org_id", orgId);
+          window.location.href = res.authUrl;
+        }
+      } else {
+        setConnectError("No Google authorization URL returned by server.");
       }
-    } catch {
-      // fallback
-      setConnectModalOpen(true);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to initiate Google OAuth. Please ensure GOOGLE_CLIENT_ID is configured.";
+      setConnectError(message);
     }
-  };
-
-  const handleCompleteAuth = async () => {
-    if (!activeWebsiteId) return;
-    const state = connectMutation.data?.state || "manual-state";
-    await callbackMutation.mutateAsync({
-      websiteId: activeWebsiteId,
-      code: simulatedCode,
-      state,
-    });
-    setConnectModalOpen(false);
   };
 
   const handleDisconnect = async () => {
@@ -124,6 +115,10 @@ export default function AnalyticsPage() {
           </select>
         </div>
       </div>
+
+      {connectError && (
+        <ErrorCallout message={connectError} />
+      )}
 
       {/* Integration Banner / Card */}
       <Card className="border-teal-100 bg-gradient-to-r from-teal-50/50 via-white to-slate-50">
@@ -486,41 +481,6 @@ export default function AnalyticsPage() {
           )}
         </div>
       ) : null}
-
-      {/* Connect Modal for OAuth flow / dev verification */}
-      {connectModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
-          <Card className="w-full max-w-md space-y-4">
-            <h3 className="text-lg font-bold text-slate-900">Connect Google Account</h3>
-            <p className="text-sm text-slate-500">
-              In production, you will be redirected to Google to approve access. For this development environment, click Complete to simulate authorized OAuth callback token exchange.
-            </p>
-
-            <div>
-              <label className="block text-xs font-medium text-slate-700">Auth Code</label>
-              <input
-                type="text"
-                value={simulatedCode}
-                onChange={(e) => setSimulatedCode(e.target.value)}
-                className="mt-1 w-full rounded-md border border-slate-300 p-2 text-sm text-slate-800 shadow-sm"
-              />
-            </div>
-
-            <div className="flex justify-end gap-3 pt-2">
-              <Button variant="secondary" onClick={() => setConnectModalOpen(false)}>
-                Cancel
-              </Button>
-              <Button
-                variant="primary"
-                onClick={handleCompleteAuth}
-                loading={callbackMutation.isPending}
-              >
-                Complete Authorization
-              </Button>
-            </div>
-          </Card>
-        </div>
-      )}
     </div>
   );
 }

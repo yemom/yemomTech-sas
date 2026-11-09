@@ -41,6 +41,10 @@ jobs:
           cache: maven
           cache-dependency-path: backend/pom.xml
 
+      # Ensure mvnw has execute permissions on Linux runners
+      - name: Make Maven wrapper executable
+        run: chmod +x mvnw
+
       # Testcontainers provisions its own Postgres + Redis containers.
       # No services block needed here — Docker is available on ubuntu-latest.
       - name: Run unit tests

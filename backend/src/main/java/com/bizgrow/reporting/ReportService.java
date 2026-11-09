@@ -168,7 +168,7 @@ public class ReportService {
         ComprehensiveReportResponse report = generateComprehensiveReport(actorUserId, organizationId);
 
         StringBuilder sb = new StringBuilder();
-        sb.append("BizGrow SaaS Performance Report\n");
+        sb.append("YemomBizGrow SaaS Performance Report\n");
         sb.append("Organization,").append(escapeCsv(report.organizationName())).append("\n");
         sb.append("Generated At,").append(report.generatedAt()).append("\n\n");
 

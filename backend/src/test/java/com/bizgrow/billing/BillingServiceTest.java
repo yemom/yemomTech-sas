@@ -6,6 +6,7 @@ import com.YemomBizGrow.billing.dto.InitializePaymentResponse;
 import com.YemomBizGrow.billing.dto.OrganizationSubscriptionResponse;
 import com.YemomBizGrow.billing.dto.SubscriptionPlanResponse;
 import com.YemomBizGrow.billing.dto.VerifyPaymentResponse;
+import com.YemomBizGrow.common.exception.BadRequestException;
 import com.YemomBizGrow.membership.AccessControlService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -21,8 +22,9 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -165,6 +167,7 @@ class BillingServiceTest {
         tx.setPlan(starterPlan);
         tx.setTxRef("bg_tx_123");
         tx.setAmountEtb(new BigDecimal("999.00"));
+        tx.setCurrency("ETB");
         tx.setStatus(PaymentStatus.PENDING);
 
         OrganizationSubscription currentSub = new OrganizationSubscription();
@@ -175,7 +178,7 @@ class BillingServiceTest {
         when(transactionRepository.findByTxRefAndOrganizationId("bg_tx_123", orgId))
                 .thenReturn(Optional.of(tx));
         when(chapaClient.verify("bg_tx_123"))
-                .thenReturn(new ChapaClient.ChapaVerifyResult(true, "success", "bg_tx_123", "CHAPA_REF_999", "Verified"));
+                .thenReturn(new ChapaClient.ChapaVerifyResult(true, "success", "bg_tx_123", "CHAPA_REF_999", new BigDecimal("999.00"), "ETB", "Verified"));
         when(subscriptionRepository.findByOrganizationId(orgId))
                 .thenReturn(Optional.of(currentSub));
         when(subscriptionRepository.save(any(OrganizationSubscription.class)))
@@ -190,6 +193,43 @@ class BillingServiceTest {
         assertThat(currentSub.getPlan().getSlug()).isEqualTo("starter");
         assertThat(currentSub.getStatus()).isEqualTo(SubscriptionStatus.ACTIVE);
         verify(historyRepository, org.mockito.Mockito.atLeastOnce()).save(any(BillingHistory.class));
+    }
+
+    @Test
+    @DisplayName("verifyPayment rejects payment when amount returned by Chapa does not match expected price")
+    void testVerifyPaymentFailsOnAmountMismatch() {
+        PaymentTransaction tx = new PaymentTransaction();
+        tx.setId(UUID.randomUUID());
+        tx.setOrganizationId(orgId);
+        tx.setPlan(starterPlan);
+        tx.setTxRef("bg_tx_bad_amount");
+        tx.setAmountEtb(new BigDecimal("999.00"));
+        tx.setCurrency("ETB");
+        tx.setStatus(PaymentStatus.PENDING);
+
+        when(transactionRepository.findByTxRefAndOrganizationId("bg_tx_bad_amount", orgId))
+                .thenReturn(Optional.of(tx));
+        // Chapa reports only 50 ETB paid instead of 999 ETB
+        when(chapaClient.verify("bg_tx_bad_amount"))
+                .thenReturn(new ChapaClient.ChapaVerifyResult(true, "success", "bg_tx_bad_amount", "CHAPA_50", new BigDecimal("50.00"), "ETB", "Verified"));
+
+        VerifyPaymentResponse resp = billingService.verifyPayment(orgId, "bg_tx_bad_amount", userId);
+
+        assertThat(resp.status()).isEqualTo(PaymentStatus.FAILED);
+        assertThat(tx.getStatus()).isEqualTo(PaymentStatus.FAILED);
+        assertThat(tx.getFailureReason()).contains("amount mismatch");
+        // Ensure subscription was NOT updated
+        verify(subscriptionRepository, never()).save(any(OrganizationSubscription.class));
+    }
+
+    @Test
+    @DisplayName("handleWebhook rejects webhook when signature is invalid")
+    void testWebhookRejectsInvalidSignature() {
+        when(chapaClient.validateWebhookSignature("bad-sig", "{\"status\":\"success\"}")).thenReturn(false);
+
+        assertThatThrownBy(() -> billingService.handleWebhook("bad-sig", "{\"status\":\"success\"}"))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("Invalid webhook signature");
     }
 
     @Test

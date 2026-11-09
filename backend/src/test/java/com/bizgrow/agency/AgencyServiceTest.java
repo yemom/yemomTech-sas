@@ -3,7 +3,9 @@ package com.YemomBizGrow.agency;
 import com.YemomBizGrow.agency.dto.AgencyClientSummaryResponse;
 import com.YemomBizGrow.agency.dto.AgencyOverviewResponse;
 import com.YemomBizGrow.agency.dto.LinkClientRequest;
+import com.YemomBizGrow.agency.dto.UpdateClientRelationshipRequest;
 import com.YemomBizGrow.audit.AuditService;
+import com.YemomBizGrow.common.exception.BadRequestException;
 import com.YemomBizGrow.common.exception.ConflictException;
 import com.YemomBizGrow.crm.Lead;
 import com.YemomBizGrow.crm.LeadRepository;
@@ -33,7 +35,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -84,8 +86,8 @@ class AgencyServiceTest {
     }
 
     @Test
-    @DisplayName("Successfully links a client organization to an agency")
-    void linkClientSuccess() {
+    @DisplayName("Agency linking client sets status to PENDING by default")
+    void linkClientStartsPending() {
         Organization client = new Organization();
         client.setId(clientOrgId);
         client.setName("Ethio Real Estate");
@@ -103,74 +105,115 @@ class AgencyServiceTest {
             return r;
         });
 
-        when(websiteRepository.countByOrganizationIdAndStatus(clientOrgId, WebsiteStatus.ACTIVE)).thenReturn(2L);
-        SeoAudit audit = new SeoAudit();
-        audit.setScore(85);
-        when(seoAuditRepository.findFirstByOrganizationIdAndStatusOrderByCompletedAtDesc(eq(clientOrgId), eq(SeoAuditStatus.COMPLETED)))
-                .thenReturn(Optional.of(audit));
-        when(leadRepository.findByOrganizationIdAndStatus(clientOrgId, LeadStatus.ACTIVE)).thenReturn(List.of());
+        AgencyClientSummaryResponse response = agencyService.linkClient(
+                actorId, agencyOrgId,
+                new LinkClientRequest("ethio-real-estate", AgencyAccessLevel.FULL, "Partnership")
+        );
 
-        LinkClientRequest request = new LinkClientRequest("ethio-real-estate", AgencyAccessLevel.FULL, "Primary client");
-        AgencyClientSummaryResponse response = agencyService.linkClient(actorId, agencyOrgId, request);
-
-        assertThat(response.clientName()).isEqualTo("Ethio Real Estate");
-        assertThat(response.websiteCount()).isEqualTo(2);
-        assertThat(response.latestSeoScore()).isEqualTo(85);
-        assertThat(response.status()).isEqualTo(AgencyRelationshipStatus.ACTIVE);
+        assertThat(response).isNotNull();
+        assertThat(response.clientOrganizationId()).isEqualTo(clientOrgId);
+        assertThat(response.status()).isEqualTo(AgencyRelationshipStatus.PENDING);
+        // Metrics must be zero while PENDING
+        assertThat(response.totalLeads()).isEqualTo(0);
+        assertThat(response.totalPipelineValueEtb()).isEqualByComparingTo(BigDecimal.ZERO);
     }
 
     @Test
-    @DisplayName("Prevents linking an organization to itself")
-    void preventLinkingSelf() {
-        Organization client = new Organization();
-        client.setId(agencyOrgId);
-        client.setName("Self Agency");
-        client.setSlug("self-agency");
-        client.setStatus(OrganizationStatus.ACTIVE);
-
-        when(organizationRepository.findBySlug("self-agency")).thenReturn(Optional.of(client));
-
-        LinkClientRequest request = new LinkClientRequest("self-agency", AgencyAccessLevel.FULL, null);
-        assertThatThrownBy(() -> agencyService.linkClient(actorId, agencyOrgId, request))
-                .isInstanceOf(ConflictException.class)
-                .hasMessageContaining("cannot link to itself");
-    }
-
-    @Test
-    @DisplayName("Aggregates agency overview metrics across multiple managed clients")
-    void getAgencyOverviewMetrics() {
-        Organization client1 = new Organization();
-        client1.setId(clientOrgId);
-        client1.setName("Client One");
-        client1.setSlug("client-one");
-
+    @DisplayName("Client owner can approve a pending agency connection request")
+    void clientCanApprovePendingRequest() {
+        UUID relId = UUID.randomUUID();
         AgencyClientRelationship rel = new AgencyClientRelationship();
-        rel.setId(UUID.randomUUID());
+        rel.setId(relId);
+        rel.setAgencyOrganizationId(agencyOrgId);
+        rel.setClientOrganizationId(clientOrgId);
+        rel.setStatus(AgencyRelationshipStatus.PENDING);
+        rel.setAccessLevel(AgencyAccessLevel.FULL);
+
+        Organization client = new Organization();
+        client.setId(clientOrgId);
+        client.setName("Ethio Real Estate");
+        client.setSlug("ethio-real-estate");
+
+        when(relationshipRepository.findByIdAndClientOrganizationId(relId, clientOrgId))
+                .thenReturn(Optional.of(rel));
+        when(relationshipRepository.save(any(AgencyClientRelationship.class)))
+                .thenAnswer(inv -> inv.getArgument(0));
+        when(organizationRepository.findById(clientOrgId)).thenReturn(Optional.of(client));
+
+        AgencyClientSummaryResponse response = agencyService.approveClientRequest(actorId, clientOrgId, relId);
+
+        assertThat(response.status()).isEqualTo(AgencyRelationshipStatus.ACTIVE);
+        assertThat(rel.getStatus()).isEqualTo(AgencyRelationshipStatus.ACTIVE);
+    }
+
+    @Test
+    @DisplayName("Agency cannot self-approve pending relationship to ACTIVE")
+    void agencyCannotSelfApprove() {
+        UUID relId = UUID.randomUUID();
+        AgencyClientRelationship rel = new AgencyClientRelationship();
+        rel.setId(relId);
+        rel.setAgencyOrganizationId(agencyOrgId);
+        rel.setClientOrganizationId(clientOrgId);
+        rel.setStatus(AgencyRelationshipStatus.PENDING);
+
+        when(relationshipRepository.findByIdAndAgencyOrganizationId(relId, agencyOrgId))
+                .thenReturn(Optional.of(rel));
+
+        assertThatThrownBy(() -> agencyService.updateRelationship(
+                actorId, agencyOrgId, relId,
+                new UpdateClientRelationshipRequest(AgencyRelationshipStatus.ACTIVE, null, null)
+        )).isInstanceOf(BadRequestException.class)
+          .hasMessageContaining("Agency cannot self-approve");
+    }
+
+    @Test
+    @DisplayName("MARKETING_ONLY access level masks CRM confidential pipeline value and sales leads")
+    void marketingOnlyAccessLevelMasksCrmData() {
+        UUID relId = UUID.randomUUID();
+        AgencyClientRelationship rel = new AgencyClientRelationship();
+        rel.setId(relId);
         rel.setAgencyOrganizationId(agencyOrgId);
         rel.setClientOrganizationId(clientOrgId);
         rel.setStatus(AgencyRelationshipStatus.ACTIVE);
+        rel.setAccessLevel(AgencyAccessLevel.MARKETING_ONLY);
 
-        when(relationshipRepository.findByAgencyOrganizationId(agencyOrgId)).thenReturn(List.of(rel));
-        when(organizationRepository.findById(clientOrgId)).thenReturn(Optional.of(client1));
-        when(websiteRepository.countByOrganizationIdAndStatus(clientOrgId, WebsiteStatus.ACTIVE)).thenReturn(3L);
+        Organization client = new Organization();
+        client.setId(clientOrgId);
+        client.setName("Client Org");
 
-        SeoAudit audit = new SeoAudit();
-        audit.setScore(90);
-        when(seoAuditRepository.findFirstByOrganizationIdAndStatusOrderByCompletedAtDesc(eq(clientOrgId), eq(SeoAuditStatus.COMPLETED)))
-                .thenReturn(Optional.of(audit));
+        when(relationshipRepository.findByAgencyOrganizationId(agencyOrgId))
+                .thenReturn(List.of(rel));
+        when(organizationRepository.findById(clientOrgId)).thenReturn(Optional.of(client));
+        when(websiteRepository.countByOrganizationIdAndStatus(clientOrgId, WebsiteStatus.ACTIVE)).thenReturn(2L);
+        when(campaignRepository.countByOrganizationIdAndStatus(clientOrgId, com.YemomBizGrow.marketing.CampaignStatus.ACTIVE)).thenReturn(3L);
 
-        Lead lead = new Lead();
-        lead.setId(UUID.randomUUID());
-        lead.setEstimatedValueEtb(new BigDecimal("150000.00"));
-        when(leadRepository.findByOrganizationIdAndStatus(clientOrgId, LeadStatus.ACTIVE)).thenReturn(List.of(lead));
+        List<AgencyClientSummaryResponse> summaries = agencyService.listClients(actorId, agencyOrgId);
 
-        AgencyOverviewResponse overview = agencyService.getAgencyOverview(actorId, agencyOrgId);
+        assertThat(summaries).hasSize(1);
+        AgencyClientSummaryResponse summary = summaries.get(0);
+        // Marketing metrics are available
+        assertThat(summary.websiteCount()).isEqualTo(2);
+        assertThat(summary.activeCampaignsCount()).isEqualTo(3);
+        // CRM confidential metrics MUST be masked
+        assertThat(summary.totalLeads()).isEqualTo(0);
+        assertThat(summary.totalPipelineValueEtb()).isEqualByComparingTo(BigDecimal.ZERO);
+    }
 
-        assertThat(overview.totalClients()).isEqualTo(1);
-        assertThat(overview.activeClients()).isEqualTo(1);
-        assertThat(overview.totalManagedWebsites()).isEqualTo(3);
-        assertThat(overview.totalAggregatedLeads()).isEqualTo(1);
-        assertThat(overview.totalAggregatedPipelineEtb()).isEqualByComparingTo("150000.00");
-        assertThat(overview.averageClientSeoScore()).isEqualTo(90.0);
+    @Test
+    @DisplayName("Client cannot link to itself")
+    void linkClientSelfFails() {
+        Organization self = new Organization();
+        self.setId(agencyOrgId);
+        self.setName("Self Agency");
+        self.setSlug("self-agency");
+        self.setStatus(OrganizationStatus.ACTIVE);
+
+        when(organizationRepository.findBySlug("self-agency")).thenReturn(Optional.of(self));
+
+        assertThatThrownBy(() -> agencyService.linkClient(
+                actorId, agencyOrgId,
+                new LinkClientRequest("self-agency", AgencyAccessLevel.FULL, null)
+        )).isInstanceOf(ConflictException.class)
+          .hasMessageContaining("cannot link to itself");
     }
 }

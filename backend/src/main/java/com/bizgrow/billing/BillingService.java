@@ -152,12 +152,12 @@ public class BillingService {
                 targetPlan.getPriceEtb(),
                 "ETB",
                 actorEmail,
-                "BizGrow",
+                "YemomBizGrow",
                 "Customer",
                 txRef,
                 null,
                 request.returnUrl(),
-                "BizGrow " + targetPlan.getName() + " Plan",
+                "YemomBizGrow " + targetPlan.getName() + " Plan",
                 "Subscription for " + targetPlan.getName() + " (" + targetPlan.getPriceEtb() + " ETB)"
         );
 
@@ -186,6 +186,7 @@ public class BillingService {
 
     /**
      * Verifies payment completion server-side via Chapa verification API.
+     * Enforces amount and currency equality.
      */
     @Transactional
     public VerifyPaymentResponse verifyPayment(UUID orgId, String txRef, UUID actorUserId) {
@@ -210,6 +211,27 @@ public class BillingService {
         ChapaClient.ChapaVerifyResult verifyResult = chapaClient.verify(txRef);
 
         if (verifyResult.success()) {
+            // Verify amount and currency match expected transaction
+            if (verifyResult.amount() != null && verifyResult.amount().compareTo(tx.getAmountEtb()) != 0) {
+                tx.setStatus(PaymentStatus.FAILED);
+                String msg = "Payment amount mismatch: expected " + tx.getAmountEtb() + " but got " + verifyResult.amount();
+                tx.setFailureReason(msg);
+                transactionRepository.save(tx);
+                log.warn("Security Alert: {}", msg);
+                return new VerifyPaymentResponse(txRef, PaymentStatus.FAILED, tx.getAmountEtb(), tx.getCurrency(),
+                        tx.getPlan().getName(), null, msg);
+            }
+
+            if (verifyResult.currency() != null && !verifyResult.currency().equalsIgnoreCase(tx.getCurrency())) {
+                tx.setStatus(PaymentStatus.FAILED);
+                String msg = "Payment currency mismatch: expected " + tx.getCurrency() + " but got " + verifyResult.currency();
+                tx.setFailureReason(msg);
+                transactionRepository.save(tx);
+                log.warn("Security Alert: {}", msg);
+                return new VerifyPaymentResponse(txRef, PaymentStatus.FAILED, tx.getAmountEtb(), tx.getCurrency(),
+                        tx.getPlan().getName(), null, msg);
+            }
+
             tx.setStatus(PaymentStatus.SUCCESS);
             tx.setVerifiedAt(Instant.now());
             tx.setChapaTransactionId(verifyResult.chapaTransactionId());
@@ -277,11 +299,11 @@ public class BillingService {
     }
 
     /**
-     * Handles webhook notification from Chapa.
+     * Handles webhook notification from Chapa with signature and payload verification.
      */
     @Transactional
     public void handleWebhook(String signature, String rawBody) {
-        if (!chapaClient.validateWebhookSignature(signature)) {
+        if (!chapaClient.validateWebhookSignature(signature, rawBody)) {
             log.warn("Invalid Chapa webhook signature received");
             throw new BadRequestException("Invalid webhook signature");
         }
@@ -304,9 +326,22 @@ public class BillingService {
                 return;
             }
 
+            // Webhook replay attack protection / idempotency
             if (tx.getStatus() == PaymentStatus.SUCCESS) {
-                log.info("Chapa webhook txRef {} already marked SUCCESS, skipping", txRef);
+                log.info("Chapa webhook txRef {} already marked SUCCESS, skipping duplicate activation", txRef);
                 return;
+            }
+
+            // Verify amount if provided
+            if (root.path("data").has("amount")) {
+                BigDecimal paidAmount = new BigDecimal(root.path("data").path("amount").asText());
+                if (paidAmount.compareTo(tx.getAmountEtb()) != 0) {
+                    log.error("Webhook amount mismatch for txRef {}: expected {} but got {}", txRef, tx.getAmountEtb(), paidAmount);
+                    tx.setStatus(PaymentStatus.FAILED);
+                    tx.setFailureReason("Webhook amount mismatch");
+                    transactionRepository.save(tx);
+                    return;
+                }
             }
 
             String eventStatus = root.path("status").asText("");

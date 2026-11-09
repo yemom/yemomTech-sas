@@ -46,6 +46,10 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
           cache: maven
 
+      # Ensure mvnw has execute permissions on Linux runners
+      - name: Make Maven wrapper executable
+        run: chmod +x mvnw
+
       # Testcontainers spins its own Postgres/Redis — no service containers needed
       - name: Run unit tests
         run: ./mvnw -B test -q

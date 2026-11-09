@@ -21,7 +21,7 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/v1/organizations/{organizationId}/agency")
+@RequestMapping("/api/v1/organizations/{organizationId}")
 public class AgencyController {
 
     private final AgencyService agencyService;
@@ -30,7 +30,9 @@ public class AgencyController {
         this.agencyService = agencyService;
     }
 
-    @PostMapping("/clients")
+    // --- Agency-Side Endpoints ---
+
+    @PostMapping("/agency/clients")
     public ResponseEntity<AgencyClientSummaryResponse> linkClient(
             @PathVariable UUID organizationId,
             @Valid @RequestBody LinkClientRequest request
@@ -40,7 +42,7 @@ public class AgencyController {
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
-    @GetMapping("/clients")
+    @GetMapping("/agency/clients")
     public ResponseEntity<List<AgencyClientSummaryResponse>> listClients(
             @PathVariable UUID organizationId
     ) {
@@ -49,7 +51,7 @@ public class AgencyController {
         return ResponseEntity.ok(response);
     }
 
-    @GetMapping("/overview")
+    @GetMapping("/agency/overview")
     public ResponseEntity<AgencyOverviewResponse> getOverview(
             @PathVariable UUID organizationId
     ) {
@@ -58,7 +60,7 @@ public class AgencyController {
         return ResponseEntity.ok(response);
     }
 
-    @PutMapping("/clients/{relationshipId}")
+    @PutMapping("/agency/clients/{relationshipId}")
     public ResponseEntity<AgencyClientSummaryResponse> updateRelationship(
             @PathVariable UUID organizationId,
             @PathVariable UUID relationshipId,
@@ -69,13 +71,52 @@ public class AgencyController {
         return ResponseEntity.ok(response);
     }
 
-    @DeleteMapping("/clients/{relationshipId}")
+    @DeleteMapping("/agency/clients/{relationshipId}")
     public ResponseEntity<Void> revokeRelationship(
             @PathVariable UUID organizationId,
             @PathVariable UUID relationshipId
     ) {
         UUID actorUserId = CurrentUser.require().id();
         agencyService.revokeRelationship(actorUserId, organizationId, relationshipId);
+        return ResponseEntity.noContent().build();
+    }
+
+    // --- Client-Side Approval & Access Management Endpoints ---
+
+    @GetMapping("/agency-requests")
+    public ResponseEntity<List<AgencyClientSummaryResponse>> listClientAgencyRequests(
+            @PathVariable UUID organizationId
+    ) {
+        UUID actorUserId = CurrentUser.require().id();
+        return ResponseEntity.ok(agencyService.listClientAgencyRequests(actorUserId, organizationId));
+    }
+
+    @PostMapping("/agency-requests/{relationshipId}/approve")
+    public ResponseEntity<AgencyClientSummaryResponse> approveClientRequest(
+            @PathVariable UUID organizationId,
+            @PathVariable UUID relationshipId
+    ) {
+        UUID actorUserId = CurrentUser.require().id();
+        return ResponseEntity.ok(agencyService.approveClientRequest(actorUserId, organizationId, relationshipId));
+    }
+
+    @PostMapping("/agency-requests/{relationshipId}/reject")
+    public ResponseEntity<Void> rejectClientRequest(
+            @PathVariable UUID organizationId,
+            @PathVariable UUID relationshipId
+    ) {
+        UUID actorUserId = CurrentUser.require().id();
+        agencyService.rejectClientRequest(actorUserId, organizationId, relationshipId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/agency-requests/{relationshipId}")
+    public ResponseEntity<Void> revokeByClient(
+            @PathVariable UUID organizationId,
+            @PathVariable UUID relationshipId
+    ) {
+        UUID actorUserId = CurrentUser.require().id();
+        agencyService.revokeByClient(actorUserId, organizationId, relationshipId);
         return ResponseEntity.noContent().build();
     }
 }

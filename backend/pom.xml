@@ -80,6 +80,12 @@
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
 
+        <!-- Real Email Delivery via JavaMailSender -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-mail</artifactId>
+        </dependency>
+
         <!-- Schema migrations (Flyway manages ALL DDL; Hibernate only validates) -->
         <dependency>
             <groupId>org.flywaydb</groupId>

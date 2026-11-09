@@ -50,6 +50,8 @@ class GoogleIntegrationServiceTest {
     private AuditService auditService;
     @Mock
     private EncryptionService encryptionService;
+    @Mock
+    private GoogleOAuthClient oAuthClient;
 
     private GoogleIntegrationProperties googleProps;
     private GoogleIntegrationService service;
@@ -74,7 +76,8 @@ class GoogleIntegrationServiceTest {
                 accessControlService,
                 auditService,
                 encryptionService,
-                googleProps);
+                googleProps,
+                oAuthClient);
 
         website = new Website();
         website.setId(websiteId);
@@ -131,7 +134,7 @@ class GoogleIntegrationServiceTest {
     }
 
     @Test
-    void handleCallback_withValidState_completesConnection() {
+    void handleCallback_withValidState_completesConnection() throws Exception {
         when(websiteRepository.findByIdAndOrganizationId(websiteId, orgId)).thenReturn(Optional.of(website));
 
         GoogleCredential cred = new GoogleCredential();
@@ -141,10 +144,16 @@ class GoogleIntegrationServiceTest {
         when(credentialRepository.findByOrganizationIdAndWebsiteId(orgId, websiteId)).thenReturn(Optional.of(cred));
         when(encryptionService.encrypt(any())).thenReturn("encrypted_token");
 
+        when(oAuthClient.exchangeAuthorizationCode(eq("test-auth-code"), eq("test-client-id"), eq("test-secret"), any()))
+                .thenReturn(new GoogleOAuthClient.TokenResponse("real_access_token", "real_refresh_token", 3600L, "openid email"));
+        when(oAuthClient.fetchUserInfo("real_access_token"))
+                .thenReturn(new GoogleOAuthClient.UserInfoResponse("123", "verified@example.com", "Verified User"));
+
         GoogleCallbackRequest req = new GoogleCallbackRequest(websiteId, "test-auth-code", "valid-state-123");
         GoogleConnectionStatusResponse resp = service.handleCallback(actorId, orgId, req);
 
         assertThat(resp.connected()).isTrue();
+        assertThat(resp.googleAccountId()).isEqualTo("verified@example.com");
         assertThat(cred.getOauthState()).isNull(); // state cleared
         verify(auditService).record(eq(orgId), eq(actorId), eq(AuditAction.GOOGLE_CONNECTED), eq("Website"), eq(websiteId), any());
     }
@@ -218,5 +227,43 @@ class GoogleIntegrationServiceTest {
         assertThat(overview.totalClicks()).isEqualTo(20);
         assertThat(overview.totalImpressions()).isEqualTo(400);
         assertThat(overview.dailyMetrics()).isNotEmpty();
+    }
+
+    @Test
+    void handleCallback_whenCredentialsMissing_throwsBadRequest() {
+        googleProps.setClientId("");
+        googleProps.setClientSecret("");
+
+        when(websiteRepository.findByIdAndOrganizationId(websiteId, orgId)).thenReturn(Optional.of(website));
+        GoogleCredential cred = new GoogleCredential();
+        cred.setOrganizationId(orgId);
+        cred.setWebsiteId(websiteId);
+        cred.setOauthState("valid-state");
+        when(credentialRepository.findByOrganizationIdAndWebsiteId(orgId, websiteId)).thenReturn(Optional.of(cred));
+
+        GoogleCallbackRequest req = new GoogleCallbackRequest(websiteId, "code", "valid-state");
+        assertThatThrownBy(() -> service.handleCallback(actorId, orgId, req))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("missing");
+    }
+
+    @Test
+    void getOverview_whenNoSnapshots_returnsZeroesWithoutSyntheticData() {
+        when(websiteRepository.findByIdAndOrganizationId(websiteId, orgId)).thenReturn(Optional.of(website));
+        when(gaSnapshotRepository.findByOrganizationIdAndWebsiteIdAndSnapshotDateBetweenOrderBySnapshotDateAsc(
+                eq(orgId), eq(websiteId), any(), any())).thenReturn(List.of());
+        when(gscSnapshotRepository.findByOrganizationIdAndWebsiteIdAndSnapshotDateBetweenOrderBySnapshotDateAsc(
+                eq(orgId), eq(websiteId), any(), any())).thenReturn(List.of());
+
+        AnalyticsOverviewResponse overview = service.getOverview(actorId, orgId, websiteId, null, null);
+
+        assertThat(overview.totalSessions()).isEqualTo(0);
+        assertThat(overview.totalUsers()).isEqualTo(0);
+        assertThat(overview.totalPageViews()).isEqualTo(0);
+        assertThat(overview.avgBounceRate()).isEqualTo(0.0);
+        assertThat(overview.totalClicks()).isEqualTo(0);
+        assertThat(overview.totalImpressions()).isEqualTo(0);
+        assertThat(overview.topPages()).isEmpty();
+        assertThat(overview.topQueries()).isEmpty();
     }
 }
