@@ -425,3 +425,173 @@ export interface PublicChatMessageResponse {
   content: string;
   timestamp: string;
 }
+
+// ---- Marketing Campaigns ----
+export type CampaignObjective =
+  | "LEAD_GENERATION"
+  | "BRAND_AWARENESS"
+  | "WEBSITE_TRAFFIC"
+  | "SALES"
+  | "EVENT_PROMOTION";
+
+export type CampaignStatus = "DRAFT" | "ACTIVE" | "PAUSED" | "COMPLETED";
+
+export type CampaignChannel =
+  | "GOOGLE_ADS"
+  | "META_ADS"
+  | "TELEGRAM"
+  | "TIKTOK"
+  | "EMAIL"
+  | "DIRECT"
+  | "SMS";
+
+export interface Campaign {
+  id: string;
+  organizationId: string;
+  name: string;
+  description?: string;
+  objective: CampaignObjective;
+  status: CampaignStatus;
+  channel: CampaignChannel;
+  budgetEtb: number;
+  spentEtb: number;
+  startDate?: string;
+  endDate?: string;
+  utmSource?: string;
+  utmMedium?: string;
+  utmCampaign?: string;
+  utmTerm?: string;
+  utmContent?: string;
+  attributedLeadsCount: number;
+  pipelineValueEtb: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateCampaignRequest {
+  name: string;
+  description?: string;
+  objective: CampaignObjective;
+  status?: CampaignStatus;
+  channel: CampaignChannel;
+  budgetEtb?: number;
+  spentEtb?: number;
+  startDate?: string;
+  endDate?: string;
+  utmSource?: string;
+  utmMedium?: string;
+  utmCampaign?: string;
+  utmTerm?: string;
+  utmContent?: string;
+}
+
+export interface UpdateCampaignRequest {
+  name?: string;
+  description?: string;
+  objective?: CampaignObjective;
+  status?: CampaignStatus;
+  channel?: CampaignChannel;
+  budgetEtb?: number;
+  spentEtb?: number;
+  startDate?: string;
+  endDate?: string;
+  utmSource?: string;
+  utmMedium?: string;
+  utmCampaign?: string;
+  utmTerm?: string;
+  utmContent?: string;
+}
+
+export interface CampaignPerformance {
+  campaignId: string;
+  campaignName: string;
+  budgetEtb: number;
+  spentEtb: number;
+  totalAttributedLeads: number;
+  wonLeads: number;
+  wonPipelineValueEtb: number;
+  totalPipelineValueEtb: number;
+  costPerLeadEtb: number;
+  returnOnAdSpendRatio: number;
+}
+
+// ---- Agency Workspace ----
+export type AgencyRelationshipStatus = "ACTIVE" | "PENDING" | "REVOKED";
+export type AgencyAccessLevel = "FULL" | "READ_ONLY" | "MARKETING_ONLY";
+
+export interface AgencyClientSummary {
+  relationshipId: string;
+  clientOrganizationId: string;
+  clientName: string;
+  clientSlug: string;
+  clientIndustry?: string;
+  status: AgencyRelationshipStatus;
+  accessLevel: AgencyAccessLevel;
+  websiteCount: number;
+  latestSeoScore?: number;
+  totalLeads: number;
+  totalPipelineValueEtb: number;
+  activeCampaignsCount: number;
+  linkedAt: string;
+}
+
+export interface AgencyOverview {
+  totalClients: number;
+  activeClients: number;
+  totalManagedWebsites: number;
+  totalAggregatedLeads: number;
+  totalAggregatedPipelineEtb: number;
+  averageClientSeoScore: number;
+  clients: AgencyClientSummary[];
+}
+
+export interface LinkClientRequest {
+  clientOrganizationSlug: string;
+  accessLevel?: AgencyAccessLevel;
+  notes?: string;
+}
+
+export interface UpdateClientRelationshipRequest {
+  status?: AgencyRelationshipStatus;
+  accessLevel?: AgencyAccessLevel;
+  notes?: string;
+}
+
+// ---- Cross-Module Reports ----
+export interface ComprehensiveReport {
+  organizationId: string;
+  organizationName: string;
+  generatedAt: string;
+  seo: {
+    latestScore?: number;
+    crawledPagesCount: number;
+    criticalIssuesCount: number;
+    warningIssuesCount: number;
+    auditStatus: string;
+  };
+  traffic: {
+    totalSessions: number;
+    totalPageviews: number;
+    bounceRatePct: number;
+    totalSearchImpressions: number;
+    totalSearchClicks: number;
+    averageCtrPct: number;
+  };
+  crm: {
+    totalLeads: number;
+    activeLeads: number;
+    wonLeads: number;
+    lostLeads: number;
+    conversionRatePct: number;
+    totalPipelineValueEtb: number;
+    wonRevenueEtb: number;
+  };
+  marketing: {
+    totalCampaigns: number;
+    activeCampaigns: number;
+    totalBudgetEtb: number;
+    totalSpentEtb: number;
+    attributedLeadsCount: number;
+    returnOnAdSpend: number;
+  };
+}

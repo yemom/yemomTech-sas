@@ -70,6 +70,7 @@ public class LeadService {
         lead.setStage(request.stage() != null ? request.stage() : LeadStage.NEW);
         lead.setStatus(LeadStatus.ACTIVE);
         lead.setAssignedUserId(request.assignedUserId());
+        lead.setCampaignId(request.campaignId());
         lead.setEstimatedValueEtb(request.estimatedValueEtb());
         lead.setNotes(request.notes());
 

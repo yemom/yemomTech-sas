@@ -214,6 +214,11 @@ const BADGE_STYLES: Record<string, string> = {
   OPEN: "bg-teal-50 text-teal-700 ring-teal-200",
   APPLIED: "bg-emerald-50 text-emerald-700 ring-emerald-200",
   DISMISSED: "bg-slate-100 text-slate-500 ring-slate-200",
+  DRAFT: "bg-slate-100 text-slate-600 ring-slate-200",
+  PAUSED: "bg-amber-50 text-amber-700 ring-amber-200",
+  FULL: "bg-emerald-50 text-emerald-700 ring-emerald-200",
+  READ_ONLY: "bg-blue-50 text-blue-700 ring-blue-200",
+  MARKETING_ONLY: "bg-purple-50 text-purple-700 ring-purple-200",
 };
 
 export function Badge({ status, children }: { status: string; children?: ReactNode }) {

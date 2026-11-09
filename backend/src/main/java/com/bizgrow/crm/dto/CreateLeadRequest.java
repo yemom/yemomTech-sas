@@ -34,8 +34,25 @@ public record CreateLeadRequest(
 
         UUID assignedUserId,
 
+        UUID campaignId,
+
         @DecimalMin(value = "0.0", inclusive = true, message = "Estimated value must be non-negative")
         BigDecimal estimatedValueEtb,
 
         String notes
-) {}
+) {
+    public CreateLeadRequest(
+            String firstName,
+            String lastName,
+            String email,
+            String phoneNumber,
+            String companyName,
+            LeadSource source,
+            LeadStage stage,
+            UUID assignedUserId,
+            BigDecimal estimatedValueEtb,
+            String notes
+    ) {
+        this(firstName, lastName, email, phoneNumber, companyName, source, stage, assignedUserId, null, estimatedValueEtb, notes);
+    }
+}

@@ -13,11 +13,17 @@ import {
 } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
 import type {
+  AgencyClientSummary,
+  AgencyOverview,
   AiRecommendation,
   AnalyticsOverview,
   AuditLog,
+  Campaign,
+  CampaignPerformance,
   ChatbotConfig,
   ChatbotConfigRequest,
+  ComprehensiveReport,
+  CreateCampaignRequest,
   Dashboard,
   GoogleConnectionStatus,
   GoogleConnectUrl,
@@ -26,6 +32,7 @@ import type {
   Lead,
   LeadActivity,
   LeadStage,
+  LinkClientRequest,
   Member,
   MembershipRole,
   MembershipStatus,
@@ -38,6 +45,8 @@ import type {
   SeoAudit,
   SeoCrawledPage,
   SeoIssue,
+  UpdateCampaignRequest,
+  UpdateClientRelationshipRequest,
   Website,
 } from "@/lib/api/types";
 
@@ -794,5 +803,167 @@ export function usePublicChat(orgSlug: string) {
       visitorEmail?: string;
       visitorPhone?: string;
     }) => api.public<PublicChatMessageResponse>(`/public/chat/${orgSlug}`, body),
+  });
+}
+
+// ============================================================================
+// Marketing Campaigns Hooks
+// ============================================================================
+
+export function useCampaigns(orgId: string, status?: string, page = 0, size = 20) {
+  const params = new URLSearchParams({ page: String(page), size: String(size) });
+  if (status) params.set("status", status);
+
+  return useQuery({
+    queryKey: ["organizations", orgId, "campaigns", page, status],
+    queryFn: () =>
+      api.get<Page<Campaign>>(`/organizations/${orgId}/campaigns?${params}`),
+    enabled: Boolean(orgId),
+  });
+}
+
+export function useCampaign(orgId: string, campaignId: string) {
+  return useQuery({
+    queryKey: ["organizations", orgId, "campaigns", campaignId],
+    queryFn: () =>
+      api.get<Campaign>(`/organizations/${orgId}/campaigns/${campaignId}`),
+    enabled: Boolean(orgId && campaignId),
+  });
+}
+
+export function useCreateCampaign(orgId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateCampaignRequest) =>
+      api.post<Campaign>(`/organizations/${orgId}/campaigns`, body),
+    onSuccess: () => {
+      void client.invalidateQueries({
+        queryKey: ["organizations", orgId, "campaigns"],
+      });
+    },
+  });
+}
+
+export function useUpdateCampaign(orgId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      campaignId,
+      body,
+    }: {
+      campaignId: string;
+      body: UpdateCampaignRequest;
+    }) =>
+      api.put<Campaign>(
+        `/organizations/${orgId}/campaigns/${campaignId}`,
+        body,
+      ),
+    onSuccess: () => {
+      void client.invalidateQueries({
+        queryKey: ["organizations", orgId, "campaigns"],
+      });
+    },
+  });
+}
+
+export function useDeleteCampaign(orgId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (campaignId: string) =>
+      api.delete<void>(`/organizations/${orgId}/campaigns/${campaignId}`),
+    onSuccess: () => {
+      void client.invalidateQueries({
+        queryKey: ["organizations", orgId, "campaigns"],
+      });
+    },
+  });
+}
+
+export function useCampaignPerformance(orgId: string, campaignId: string) {
+  return useQuery({
+    queryKey: ["organizations", orgId, "campaigns", campaignId, "performance"],
+    queryFn: () =>
+      api.get<CampaignPerformance>(`/organizations/${orgId}/campaigns/${campaignId}/performance`),
+    enabled: Boolean(orgId && campaignId),
+  });
+}
+
+// ============================================================================
+// Agency Workspace Hooks
+// ============================================================================
+
+export function useAgencyClients(orgId: string) {
+  return useQuery({
+    queryKey: ["organizations", orgId, "agency", "clients"],
+    queryFn: () =>
+      api.get<AgencyClientSummary[]>(`/organizations/${orgId}/agency/clients`),
+    enabled: Boolean(orgId),
+  });
+}
+
+export function useAgencyOverview(orgId: string) {
+  return useQuery({
+    queryKey: ["organizations", orgId, "agency", "overview"],
+    queryFn: () =>
+      api.get<AgencyOverview>(`/organizations/${orgId}/agency/overview`),
+    enabled: Boolean(orgId),
+  });
+}
+
+export function useLinkAgencyClient(orgId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: LinkClientRequest) =>
+      api.post<AgencyClientSummary>(`/organizations/${orgId}/agency/clients`, body),
+    onSuccess: () => {
+      void client.invalidateQueries({
+        queryKey: ["organizations", orgId, "agency"],
+      });
+    },
+  });
+}
+
+export function useUpdateAgencyClient(orgId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      relationshipId,
+      body,
+    }: {
+      relationshipId: string;
+      body: UpdateClientRelationshipRequest;
+    }) =>
+      api.put<AgencyClientSummary>(`/organizations/${orgId}/agency/clients/${relationshipId}`, body),
+    onSuccess: () => {
+      void client.invalidateQueries({
+        queryKey: ["organizations", orgId, "agency"],
+      });
+    },
+  });
+}
+
+export function useRevokeAgencyClient(orgId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (relationshipId: string) =>
+      api.delete<void>(`/organizations/${orgId}/agency/clients/${relationshipId}`),
+    onSuccess: () => {
+      void client.invalidateQueries({
+        queryKey: ["organizations", orgId, "agency"],
+      });
+    },
+  });
+}
+
+// ============================================================================
+// Cross-Module Reports Hooks
+// ============================================================================
+
+export function useComprehensiveReport(orgId: string) {
+  return useQuery({
+    queryKey: ["organizations", orgId, "reports", "comprehensive"],
+    queryFn: () =>
+      api.get<ComprehensiveReport>(`/organizations/${orgId}/reports/comprehensive`),
+    enabled: Boolean(orgId),
   });
 }

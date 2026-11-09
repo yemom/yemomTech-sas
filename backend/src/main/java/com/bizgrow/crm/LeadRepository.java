@@ -27,6 +27,10 @@ public interface LeadRepository extends JpaRepository<Lead, UUID> {
 
     long countByOrganizationIdAndStage(UUID organizationId, LeadStage stage);
 
+    long countByOrganizationIdAndCampaignId(UUID organizationId, UUID campaignId);
+
+    List<Lead> findByOrganizationIdAndCampaignId(UUID organizationId, UUID campaignId);
+
     @Query("SELECT l FROM Lead l WHERE l.organizationId = :orgId AND l.status = 'ACTIVE' AND (" +
             "LOWER(l.firstName) LIKE LOWER(CONCAT('%', :query, '%')) OR " +
             "LOWER(l.lastName) LIKE LOWER(CONCAT('%', :query, '%')) OR " +

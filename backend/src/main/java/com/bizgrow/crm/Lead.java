@@ -60,6 +60,9 @@ public class Lead extends TimestampedEntity {
     @Column(name = "assigned_user_id")
     private UUID assignedUserId;
 
+    @Column(name = "campaign_id")
+    private UUID campaignId;
+
     @Column(name = "estimated_value_etb", precision = 15, scale = 2)
     private BigDecimal estimatedValueEtb;
 

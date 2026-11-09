@@ -17,4 +17,6 @@ public interface SeoAuditRepository extends JpaRepository<SeoAudit, UUID> {
     Optional<SeoAudit> findByIdAndOrganizationIdAndWebsiteId(UUID id, UUID organizationId, UUID websiteId);
 
     Optional<SeoAudit> findFirstByOrganizationIdAndWebsiteIdAndStatusIn(UUID organizationId, UUID websiteId, Collection<SeoAuditStatus> statuses);
+
+    Optional<SeoAudit> findFirstByOrganizationIdAndStatusOrderByCompletedAtDesc(UUID organizationId, SeoAuditStatus status);
 }
