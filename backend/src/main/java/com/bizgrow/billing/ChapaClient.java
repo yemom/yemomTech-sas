@@ -163,10 +163,21 @@ public class ChapaClient {
                 if ("success".equalsIgnoreCase(status) && "success".equalsIgnoreCase(txStatus)) {
                     String chapaRef = data.path("reference").asText(txRef);
                     BigDecimal amount = null;
-                    if (data.has("amount") && !data.path("amount").isNull()) {
-                        amount = new BigDecimal(data.path("amount").asText());
+                    if (data.has("amount") && !data.path("amount").isNull() && !data.path("amount").asText().isBlank()) {
+                        try {
+                            amount = new BigDecimal(data.path("amount").asText().trim());
+                        } catch (Exception e) {
+                            log.warn("Chapa verify response has unparseable amount: {}", data.path("amount").asText());
+                        }
                     }
-                    String currency = data.path("currency").asText("ETB");
+                    String currency = (data.has("currency") && !data.path("currency").isNull() && !data.path("currency").asText().isBlank())
+                            ? data.path("currency").asText().trim()
+                            : null;
+
+                    if (amount == null || currency == null) {
+                        log.warn("Chapa verify response missing valid amount or currency: amount={}, currency={}", amount, currency);
+                        return new ChapaVerifyResult(false, "invalid_provider_data", txRef, chapaRef, amount, currency, "Provider response missing valid amount or currency");
+                    }
 
                     return new ChapaVerifyResult(true, "success", txRef, chapaRef, amount, currency, "Transaction verified successfully");
                 } else {

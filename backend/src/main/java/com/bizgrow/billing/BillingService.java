@@ -210,27 +210,52 @@ public class BillingService {
 
         ChapaClient.ChapaVerifyResult verifyResult = chapaClient.verify(txRef);
 
-        if (verifyResult.success()) {
-            // Verify amount and currency match expected transaction
-            if (verifyResult.amount() != null && verifyResult.amount().compareTo(tx.getAmountEtb()) != 0) {
-                tx.setStatus(PaymentStatus.FAILED);
-                String msg = "Payment amount mismatch: expected " + tx.getAmountEtb() + " but got " + verifyResult.amount();
-                tx.setFailureReason(msg);
-                transactionRepository.save(tx);
-                log.warn("Security Alert: {}", msg);
-                return new VerifyPaymentResponse(txRef, PaymentStatus.FAILED, tx.getAmountEtb(), tx.getCurrency(),
-                        tx.getPlan().getName(), null, msg);
-            }
+        // Strict fail-closed verification
+        if (!verifyResult.success() || !"success".equalsIgnoreCase(verifyResult.status())) {
+            tx.setStatus(PaymentStatus.FAILED);
+            tx.setFailureReason("Provider verification failed: " + verifyResult.message());
+            transactionRepository.save(tx);
+            recordBillingHistory(orgId, tx.getId(), null, BillingEventType.PAYMENT_FAILED,
+                    "Payment failed: " + verifyResult.message(), tx.getAmountEtb());
+            auditService.record(actorUserId, orgId, AuditAction.PAYMENT_FAILED,
+                    "PaymentTransaction", tx.getId(),
+                    Map.of("txRef", txRef, "reason", verifyResult.message()));
+            return new VerifyPaymentResponse(txRef, PaymentStatus.FAILED, tx.getAmountEtb(), tx.getCurrency(),
+                    tx.getPlan() != null ? tx.getPlan().getName() : "Subscription", null,
+                    "Payment verification failed: " + verifyResult.message());
+        }
 
-            if (verifyResult.currency() != null && !verifyResult.currency().equalsIgnoreCase(tx.getCurrency())) {
-                tx.setStatus(PaymentStatus.FAILED);
-                String msg = "Payment currency mismatch: expected " + tx.getCurrency() + " but got " + verifyResult.currency();
-                tx.setFailureReason(msg);
-                transactionRepository.save(tx);
-                log.warn("Security Alert: {}", msg);
-                return new VerifyPaymentResponse(txRef, PaymentStatus.FAILED, tx.getAmountEtb(), tx.getCurrency(),
-                        tx.getPlan().getName(), null, msg);
-            }
+        if (verifyResult.amount() == null || verifyResult.amount().compareTo(tx.getAmountEtb()) != 0) {
+            tx.setStatus(PaymentStatus.FAILED);
+            String msg = "Payment amount mismatch or missing: expected " + tx.getAmountEtb() + " but got " + verifyResult.amount();
+            tx.setFailureReason(msg);
+            transactionRepository.save(tx);
+            log.warn("Security Alert: {}", msg);
+            return new VerifyPaymentResponse(txRef, PaymentStatus.FAILED, tx.getAmountEtb(), tx.getCurrency(),
+                    tx.getPlan().getName(), null, msg);
+        }
+
+        if (verifyResult.currency() == null || !verifyResult.currency().equalsIgnoreCase(tx.getCurrency())) {
+            tx.setStatus(PaymentStatus.FAILED);
+            String msg = "Payment currency mismatch or missing: expected " + tx.getCurrency() + " but got " + verifyResult.currency();
+            tx.setFailureReason(msg);
+            transactionRepository.save(tx);
+            log.warn("Security Alert: {}", msg);
+            return new VerifyPaymentResponse(txRef, PaymentStatus.FAILED, tx.getAmountEtb(), tx.getCurrency(),
+                    tx.getPlan().getName(), null, msg);
+        }
+
+        if (verifyResult.txRef() == null || !verifyResult.txRef().equals(tx.getTxRef())) {
+            tx.setStatus(PaymentStatus.FAILED);
+            String msg = "Payment txRef mismatch: expected " + tx.getTxRef() + " but got " + verifyResult.txRef();
+            tx.setFailureReason(msg);
+            transactionRepository.save(tx);
+            log.warn("Security Alert: {}", msg);
+            return new VerifyPaymentResponse(txRef, PaymentStatus.FAILED, tx.getAmountEtb(), tx.getCurrency(),
+                    tx.getPlan().getName(), null, msg);
+        }
+
+        if (true) {
 
             tx.setStatus(PaymentStatus.SUCCESS);
             tx.setVerifiedAt(Instant.now());
@@ -310,38 +335,25 @@ public class BillingService {
 
         try {
             JsonNode root = objectMapper.readTree(rawBody);
-            String txRef = root.path("data").path("tx_ref").asText("");
-            if (txRef.isBlank()) {
-                txRef = root.path("tx_ref").asText("");
-            }
+            String extractedRef = root.path("data").path("tx_ref").asText("");
+            final String txRef = extractedRef.isBlank() ? root.path("tx_ref").asText("") : extractedRef;
 
             if (txRef.isBlank()) {
                 log.warn("Chapa webhook missing tx_ref in payload: {}", rawBody);
                 return;
             }
 
-            PaymentTransaction tx = transactionRepository.findByTxRef(txRef).orElse(null);
+            PaymentTransaction tx = transactionRepository.findByTxRefForUpdate(txRef)
+                    .orElseGet(() -> transactionRepository.findByTxRef(txRef).orElse(null));
             if (tx == null) {
                 log.warn("Chapa webhook received for unknown txRef: {}", txRef);
                 return;
             }
 
-            // Webhook replay attack protection / idempotency
+            // Webhook replay attack protection / idempotency & state downgrade prevention
             if (tx.getStatus() == PaymentStatus.SUCCESS) {
                 log.info("Chapa webhook txRef {} already marked SUCCESS, skipping duplicate activation", txRef);
                 return;
-            }
-
-            // Verify amount if provided
-            if (root.path("data").has("amount")) {
-                BigDecimal paidAmount = new BigDecimal(root.path("data").path("amount").asText());
-                if (paidAmount.compareTo(tx.getAmountEtb()) != 0) {
-                    log.error("Webhook amount mismatch for txRef {}: expected {} but got {}", txRef, tx.getAmountEtb(), paidAmount);
-                    tx.setStatus(PaymentStatus.FAILED);
-                    tx.setFailureReason("Webhook amount mismatch");
-                    transactionRepository.save(tx);
-                    return;
-                }
             }
 
             // Server-side verification with Chapa before activating subscription
@@ -354,20 +366,29 @@ public class BillingService {
                 return;
             }
 
-            // Verify amount from server verification
-            if (verifyResult.amount() != null && verifyResult.amount().compareTo(tx.getAmountEtb()) != 0) {
-                log.error("Server verified amount mismatch for txRef {}: expected {} but got {}", txRef, tx.getAmountEtb(), verifyResult.amount());
+            // Fail-closed: require valid, non-null, exact amount from server verification
+            if (verifyResult.amount() == null || verifyResult.amount().compareTo(tx.getAmountEtb()) != 0) {
+                log.error("Server verified amount mismatch or missing for txRef {}: expected {} but got {}", txRef, tx.getAmountEtb(), verifyResult.amount());
                 tx.setStatus(PaymentStatus.FAILED);
-                tx.setFailureReason("Verified amount mismatch");
+                tx.setFailureReason("Verified amount mismatch or missing");
                 transactionRepository.save(tx);
                 return;
             }
 
-            // Verify currency from server verification
-            if (verifyResult.currency() != null && !verifyResult.currency().equalsIgnoreCase(tx.getCurrency())) {
-                log.error("Server verified currency mismatch for txRef {}: expected {} but got {}", txRef, tx.getCurrency(), verifyResult.currency());
+            // Fail-closed: require valid, non-blank, exact currency from server verification
+            if (verifyResult.currency() == null || !verifyResult.currency().equalsIgnoreCase(tx.getCurrency())) {
+                log.error("Server verified currency mismatch or missing for txRef {}: expected {} but got {}", txRef, tx.getCurrency(), verifyResult.currency());
                 tx.setStatus(PaymentStatus.FAILED);
-                tx.setFailureReason("Verified currency mismatch");
+                tx.setFailureReason("Verified currency mismatch or missing");
+                transactionRepository.save(tx);
+                return;
+            }
+
+            // Fail-closed: verify matching txRef
+            if (verifyResult.txRef() == null || !verifyResult.txRef().equals(tx.getTxRef())) {
+                log.error("Server verified txRef mismatch for txRef {}: got {}", txRef, verifyResult.txRef());
+                tx.setStatus(PaymentStatus.FAILED);
+                tx.setFailureReason("Verified txRef mismatch");
                 transactionRepository.save(tx);
                 return;
             }

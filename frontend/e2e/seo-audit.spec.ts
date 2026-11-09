@@ -32,9 +32,9 @@ test("user can register website and inspect SEO audit view", async ({ page }) =>
   await expect(page.getByText("example.com")).toBeVisible();
 
   // Open the website audits page
-  const auditLink = page.getByRole("link", { name: "View Audits" }).first();
-  if (await auditLink.isVisible()) {
-    await auditLink.click();
+  const auditBtn = page.getByRole("button", { name: "Audits" }).first();
+  if (await auditBtn.isVisible()) {
+    await auditBtn.click();
     await expect(page).toHaveURL(/\/audits/);
   }
 });

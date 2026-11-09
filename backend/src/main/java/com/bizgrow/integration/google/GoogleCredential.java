@@ -67,6 +67,10 @@ public class GoogleCredential {
     @Column(name = "oauth_state_expires_at")
     private Instant oauthStateExpiresAt;
 
+    /** ID of user who initiated the OAuth flow. */
+    @Column(name = "initiating_user_id")
+    private UUID initiatingUserId;
+
     /** Tenant-selected GA4 Property ID (e.g. "properties/123456"). */
     @Column(name = "ga4_property_id", length = 128)
     private String ga4PropertyId;

@@ -23,6 +23,8 @@ test("user can navigate CRM leads, view pipeline and stages", async ({ page }) =
   await page.getByRole("link", { name: "Leads" }).click();
   await expect(page).toHaveURL(/\/workspace\/leads$/);
 
-  // Check CRM header and empty state or lead table
-  await expect(page.getByRole("heading", { name: "Leads & CRM Pipeline" })).toBeVisible();
+  // Check CRM header and metrics
+  await expect(page.getByRole("heading", { name: "Leads & Sales Pipeline" })).toBeVisible();
+  await expect(page.getByText("Total Pipeline Value")).toBeVisible();
+  await expect(page.getByText("Total Leads Tracked")).toBeVisible();
 });

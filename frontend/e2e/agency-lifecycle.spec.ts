@@ -24,5 +24,6 @@ test("agency client management UI validates client link request authorization", 
   await expect(page).toHaveURL(/\/workspace\/agency$/);
 
   // Agency dashboard header should be visible
-  await expect(page.getByRole("heading", { name: "Agency Client Management" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Agency Client Workspace" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "+ Link Client Organization" })).toBeVisible();
 });

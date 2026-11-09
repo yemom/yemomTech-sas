@@ -24,5 +24,5 @@ test("user can navigate to AI recommendations and assistant interface", async ({
   await expect(page).toHaveURL(/\/workspace\/ai$/);
 
   // Verify AI header is visible
-  await expect(page.getByRole("heading", { name: "AI Growth Advisor & Assistant" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "AI Business Insights & Chatbot" })).toBeVisible();
 });

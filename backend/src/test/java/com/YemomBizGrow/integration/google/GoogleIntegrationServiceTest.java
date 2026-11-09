@@ -149,6 +149,7 @@ class GoogleIntegrationServiceTest {
         when(oAuthClient.fetchUserInfo("real_access_token"))
                 .thenReturn(new GoogleOAuthClient.UserInfoResponse("123", "verified@example.com", "Verified User"));
 
+        when(credentialRepository.consumeOauthState(eq(orgId), eq(websiteId), eq("valid-state-123"), any())).thenReturn(1);
         GoogleCallbackRequest req = new GoogleCallbackRequest(websiteId, "test-auth-code", "valid-state-123");
         GoogleConnectionStatusResponse resp = service.handleCallback(actorId, orgId, req);
 
@@ -235,11 +236,6 @@ class GoogleIntegrationServiceTest {
         googleProps.setClientSecret("");
 
         when(websiteRepository.findByIdAndOrganizationId(websiteId, orgId)).thenReturn(Optional.of(website));
-        GoogleCredential cred = new GoogleCredential();
-        cred.setOrganizationId(orgId);
-        cred.setWebsiteId(websiteId);
-        cred.setOauthState("valid-state");
-        when(credentialRepository.findByOrganizationIdAndWebsiteId(orgId, websiteId)).thenReturn(Optional.of(cred));
 
         GoogleCallbackRequest req = new GoogleCallbackRequest(websiteId, "code", "valid-state");
         assertThatThrownBy(() -> service.handleCallback(actorId, orgId, req))
@@ -265,5 +261,39 @@ class GoogleIntegrationServiceTest {
         assertThat(overview.totalImpressions()).isEqualTo(0);
         assertThat(overview.topPages()).isEmpty();
         assertThat(overview.topQueries()).isEmpty();
+    }
+
+    @Test
+    void handleCallback_whenDifferentUser_throwsBadRequest() {
+        when(websiteRepository.findByIdAndOrganizationId(websiteId, orgId)).thenReturn(Optional.of(website));
+
+        GoogleCredential cred = new GoogleCredential();
+        cred.setOrganizationId(orgId);
+        cred.setWebsiteId(websiteId);
+        cred.setInitiatingUserId(UUID.randomUUID()); // different initiating user
+        when(credentialRepository.findByOrganizationIdAndWebsiteId(orgId, websiteId)).thenReturn(Optional.of(cred));
+
+        GoogleCallbackRequest req = new GoogleCallbackRequest(websiteId, "code", "any-state");
+        assertThatThrownBy(() -> service.handleCallback(actorId, orgId, req))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("initiated");
+    }
+
+    @Test
+    void handleCallback_whenStateReplayedOrConcurrent_throwsBadRequest() {
+        when(websiteRepository.findByIdAndOrganizationId(websiteId, orgId)).thenReturn(Optional.of(website));
+
+        GoogleCredential cred = new GoogleCredential();
+        cred.setOrganizationId(orgId);
+        cred.setWebsiteId(websiteId);
+        cred.setInitiatingUserId(actorId);
+        when(credentialRepository.findByOrganizationIdAndWebsiteId(orgId, websiteId)).thenReturn(Optional.of(cred));
+        // Atomic consume returns 0 because state was already consumed
+        when(credentialRepository.consumeOauthState(eq(orgId), eq(websiteId), eq("replayed-state"), any())).thenReturn(0);
+
+        GoogleCallbackRequest req = new GoogleCallbackRequest(websiteId, "code", "replayed-state");
+        assertThatThrownBy(() -> service.handleCallback(actorId, orgId, req))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("replayed");
     }
 }

@@ -300,4 +300,106 @@ class BillingServiceTest {
         assertThat(tx.getStatus()).isEqualTo(PaymentStatus.SUCCESS);
         verify(subscriptionRepository).save(any(OrganizationSubscription.class));
     }
+
+    @Test
+    @DisplayName("handleWebhook with missing amount fails closed without activating subscription")
+    void testWebhookMissingAmountFailsClosed() {
+        String txRef = "TX-HOOK-NO-AMT";
+        String payload = "{\"status\":\"success\",\"data\":{\"tx_ref\":\"" + txRef + "\"}}";
+        PaymentTransaction tx = new PaymentTransaction();
+        tx.setId(UUID.randomUUID());
+        tx.setTxRef(txRef);
+        tx.setOrganizationId(orgId);
+        tx.setAmountEtb(new BigDecimal("999.00"));
+        tx.setCurrency("ETB");
+        tx.setStatus(PaymentStatus.PENDING);
+
+        when(chapaClient.validateWebhookSignature("valid-sig", payload)).thenReturn(true);
+        when(transactionRepository.findByTxRefForUpdate(txRef)).thenReturn(Optional.of(tx));
+        when(chapaClient.verify(txRef)).thenReturn(new ChapaClient.ChapaVerifyResult(true, "success", txRef, "CHAPA-123", null, "ETB", "Verified"));
+
+        billingService.handleWebhook("valid-sig", payload);
+
+        assertThat(tx.getStatus()).isEqualTo(PaymentStatus.FAILED);
+        verify(subscriptionRepository, never()).save(any(OrganizationSubscription.class));
+    }
+
+    @Test
+    @DisplayName("handleWebhook with wrong amount fails closed without activating subscription")
+    void testWebhookWrongAmountFailsClosed() {
+        String txRef = "TX-HOOK-WRONG-AMT";
+        String payload = "{\"status\":\"success\",\"data\":{\"tx_ref\":\"" + txRef + "\"}}";
+        PaymentTransaction tx = new PaymentTransaction();
+        tx.setId(UUID.randomUUID());
+        tx.setTxRef(txRef);
+        tx.setOrganizationId(orgId);
+        tx.setAmountEtb(new BigDecimal("999.00"));
+        tx.setCurrency("ETB");
+        tx.setStatus(PaymentStatus.PENDING);
+
+        when(chapaClient.validateWebhookSignature("valid-sig", payload)).thenReturn(true);
+        when(transactionRepository.findByTxRefForUpdate(txRef)).thenReturn(Optional.of(tx));
+        when(chapaClient.verify(txRef)).thenReturn(new ChapaClient.ChapaVerifyResult(true, "success", txRef, "CHAPA-123", new BigDecimal("10.00"), "ETB", "Verified"));
+
+        billingService.handleWebhook("valid-sig", payload);
+
+        assertThat(tx.getStatus()).isEqualTo(PaymentStatus.FAILED);
+        verify(subscriptionRepository, never()).save(any(OrganizationSubscription.class));
+    }
+
+    @Test
+    @DisplayName("handleWebhook with missing or wrong currency fails closed")
+    void testWebhookWrongCurrencyFailsClosed() {
+        String txRef = "TX-HOOK-WRONG-CURR";
+        String payload = "{\"status\":\"success\",\"data\":{\"tx_ref\":\"" + txRef + "\"}}";
+        PaymentTransaction tx = new PaymentTransaction();
+        tx.setId(UUID.randomUUID());
+        tx.setTxRef(txRef);
+        tx.setOrganizationId(orgId);
+        tx.setAmountEtb(new BigDecimal("999.00"));
+        tx.setCurrency("ETB");
+        tx.setStatus(PaymentStatus.PENDING);
+
+        when(chapaClient.validateWebhookSignature("valid-sig", payload)).thenReturn(true);
+        when(transactionRepository.findByTxRefForUpdate(txRef)).thenReturn(Optional.of(tx));
+        when(chapaClient.verify(txRef)).thenReturn(new ChapaClient.ChapaVerifyResult(true, "success", txRef, "CHAPA-123", new BigDecimal("999.00"), "USD", "Verified"));
+
+        billingService.handleWebhook("valid-sig", payload);
+
+        assertThat(tx.getStatus()).isEqualTo(PaymentStatus.FAILED);
+        verify(subscriptionRepository, never()).save(any(OrganizationSubscription.class));
+    }
+
+    @Test
+    @DisplayName("handleWebhook replayed request ignores already SUCCESS transaction")
+    void testWebhookReplayIgnored() {
+        String txRef = "TX-HOOK-REPLAY";
+        String payload = "{\"status\":\"success\",\"data\":{\"tx_ref\":\"" + txRef + "\"}}";
+        PaymentTransaction tx = new PaymentTransaction();
+        tx.setId(UUID.randomUUID());
+        tx.setTxRef(txRef);
+        tx.setOrganizationId(orgId);
+        tx.setAmountEtb(new BigDecimal("999.00"));
+        tx.setCurrency("ETB");
+        tx.setStatus(PaymentStatus.SUCCESS);
+
+        when(chapaClient.validateWebhookSignature("valid-sig", payload)).thenReturn(true);
+        when(transactionRepository.findByTxRefForUpdate(txRef)).thenReturn(Optional.of(tx));
+
+        billingService.handleWebhook("valid-sig", payload);
+
+        verify(chapaClient, never()).verify(any());
+        verify(subscriptionRepository, never()).save(any(OrganizationSubscription.class));
+    }
+
+    @Test
+    @DisplayName("handleWebhook with invalid signature throws BadRequestException")
+    void testWebhookInvalidSignatureThrows() {
+        String payload = "{\"status\":\"success\"}";
+        when(chapaClient.validateWebhookSignature("bad-sig", payload)).thenReturn(false);
+
+        assertThatThrownBy(() -> billingService.handleWebhook("bad-sig", payload))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("Invalid webhook signature");
+    }
 }

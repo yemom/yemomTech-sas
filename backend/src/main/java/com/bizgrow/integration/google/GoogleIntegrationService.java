@@ -117,6 +117,7 @@ public class GoogleIntegrationService {
 
         credential.setOauthState(state);
         credential.setOauthStateExpiresAt(Instant.now().plus(Duration.ofMinutes(15)));
+        credential.setInitiatingUserId(actorUserId);
         credential.setUpdatedAt(Instant.now());
         credentialRepository.save(credential);
 
@@ -143,22 +144,21 @@ public class GoogleIntegrationService {
         accessControlService.requirePermission(actorUserId, organizationId, Permission.WEBSITE_MANAGE);
         requireWebsite(organizationId, request.websiteId());
 
+        if (googleProps.getClientId().isBlank() || googleProps.getClientSecret().isBlank()) {
+            throw new BadRequestException("Google integration credentials (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET) are missing");
+        }
+
         GoogleCredential credential = credentialRepository.findByOrganizationIdAndWebsiteId(organizationId, request.websiteId())
                 .orElseThrow(() -> new BadRequestException("No OAuth flow initiated for this website"));
 
-        if (credential.getOauthState() == null || !credential.getOauthState().equals(request.state())) {
-            throw new BadRequestException("Invalid or expired OAuth state parameter");
+        if (credential.getInitiatingUserId() != null && !credential.getInitiatingUserId().equals(actorUserId)) {
+            throw new BadRequestException("OAuth callback must be completed by the user who initiated the connection");
         }
 
-        if (credential.getOauthStateExpiresAt() != null && Instant.now().isAfter(credential.getOauthStateExpiresAt())) {
-            credential.setOauthState(null);
-            credential.setOauthStateExpiresAt(null);
-            credentialRepository.save(credential);
-            throw new BadRequestException("OAuth state has expired. Please initiate connection again.");
-        }
-
-        if (googleProps.getClientId().isBlank() || googleProps.getClientSecret().isBlank()) {
-            throw new BadRequestException("Google integration credentials (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET) are missing");
+        // Atomic single-use state consumption to prevent replay or concurrent duplicate callbacks
+        int consumed = credentialRepository.consumeOauthState(organizationId, request.websiteId(), request.state(), Instant.now());
+        if (consumed == 0) {
+            throw new BadRequestException("Invalid, expired, or replayed OAuth state parameter");
         }
 
         GoogleOAuthClient.TokenResponse tokens;
