@@ -39,6 +39,7 @@ jobs:
           distribution: temurin
           java-version: "21"
           cache: maven
+          cache-dependency-path: backend/pom.xml
 
       # Testcontainers provisions its own Postgres + Redis containers.
       # No services block needed here — Docker is available on ubuntu-latest.
