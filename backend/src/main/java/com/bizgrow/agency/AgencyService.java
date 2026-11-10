@@ -271,9 +271,8 @@ public class AgencyService {
         if (request.status() != null && request.status() != rel.getStatus()) {
             throw new BadRequestException("Agency cannot change relationship status. Status transitions are controlled exclusively by the client organization.");
         }
-        if (request.accessLevel() != null) {
-            rel.setAccessLevel(request.accessLevel());
-        }
+        // Agency CANNOT change access level — only the client organization may do so.
+        // The access level was set during the initial link or client approval and remains immutable for the agency.
         if (request.notes() != null) {
             rel.setNotes(request.notes());
         }

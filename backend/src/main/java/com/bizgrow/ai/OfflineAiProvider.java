@@ -137,15 +137,21 @@ public class OfflineAiProvider implements AiProvider {
             ChatbotConfig config,
             Organization organization,
             List<ChatbotMessage> history,
-            String incomingMessage) {
+            String incomingMessage,
+            String faqContext) {
 
         String lower = incomingMessage.toLowerCase(Locale.ROOT).trim();
 
         // 1. Check FAQ items configured by organization
-        if (config.getFaqItems() != null) {
-            for (Map<String, Object> faq : config.getFaqItems()) {
-                String q = String.valueOf(faq.getOrDefault("question", "")).toLowerCase(Locale.ROOT);
-                String a = String.valueOf(faq.getOrDefault("answer", ""));
+        if (config.getFaqItems() != null && !faqContext.isBlank()) {
+            // Use the pre-built FAQ context string for matching
+            String[] faqs = faqContext.split("\n\n");
+            for (String faq : faqs) {
+                if (faq.isBlank()) continue;
+                int colonIdx = faq.indexOf(':');
+                if (colonIdx <= 0) continue;
+                String q = faq.substring(0, colonIdx).trim().toLowerCase(Locale.ROOT);
+                String a = faq.substring(colonIdx + 1).trim();
                 if (!q.isBlank() && !a.isBlank()) {
                     String[] words = q.split("\\s+");
                     int matchCount = 0;

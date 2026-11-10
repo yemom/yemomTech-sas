@@ -22,5 +22,6 @@ public interface AiProvider {
             ChatbotConfig config,
             Organization organization,
             List<ChatbotMessage> history,
-            String incomingMessage);
+            String incomingMessage,
+            String faqContext);
 }

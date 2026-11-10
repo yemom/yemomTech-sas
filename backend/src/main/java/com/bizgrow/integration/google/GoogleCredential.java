@@ -87,6 +87,10 @@ public class GoogleCredential {
     @Column(name = "last_gsc_sync_at")
     private Instant lastGscSyncAt;
 
+    /** PKCE code verifier from the OAuth flow (stored for callback exchange). */
+    @Column(name = "code_verifier", length = 256)
+    private String codeVerifier;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt = Instant.now();
 

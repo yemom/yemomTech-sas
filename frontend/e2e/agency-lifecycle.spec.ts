@@ -33,7 +33,7 @@ test("agency client management UI validates client link request authorization", 
 
   // Enter invalid/non-existent client slug and verify fail-closed error handling
   await page.getByPlaceholder("e.g. ethio-real-estate").fill("non-existent-client-org");
-  await page.getByRole("button", { name: "Send Link Request" }).click();
+  await page.getByRole("button", { name: "Link Client" }).click();
 
   // Modal remains open or displays error callout
   await expect(page.getByRole("heading", { name: "Link Client Organization" })).toBeVisible();

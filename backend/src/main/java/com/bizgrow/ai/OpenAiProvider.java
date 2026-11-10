@@ -166,16 +166,27 @@ public class OpenAiProvider implements AiProvider {
             ChatbotConfig config,
             Organization organization,
             List<ChatbotMessage> history,
-            String incomingMessage) {
+            String incomingMessage,
+            String faqContext) {
 
         if (!isConfigured()) {
-            return offlineProvider.generateChatReply(config, organization, history, incomingMessage);
+            return offlineProvider.generateChatReply(config, organization, history, incomingMessage, faqContext);
         }
 
         try {
             String systemInstructions = (config.getPromptInstructions() != null && !config.getPromptInstructions().isBlank())
                     ? config.getPromptInstructions()
                     : "You are a professional customer service and sales assistant for " + organization.getName() + " on YemomBizGrow.";
+
+            List<Map<String, String>> messages = new ArrayList<>();
+            messages.add(Map.of("role", "system", "content", systemInstructions));
+
+            // Append FAQ context as system prompt content to guide the model
+            StringBuilder promptBuilder = new StringBuilder(systemInstructions);
+            if (faqContext != null && !faqContext.isBlank()) {
+                promptBuilder.append("\n\nFAQ KNOWLEDGE BASE:\n").append(faqContext);
+            }
+            systemInstructions = promptBuilder.toString();
 
             List<Map<String, String>> messages = new ArrayList<>();
             messages.add(Map.of("role", "system", "content", systemInstructions));
@@ -214,7 +225,7 @@ public class OpenAiProvider implements AiProvider {
             log.warn("OpenAI chat reply failed: {}; falling back to offline provider", e.getMessage());
         }
 
-        return offlineProvider.generateChatReply(config, organization, history, incomingMessage);
+        return offlineProvider.generateChatReply(config, organization, history, incomingMessage, faqContext);
     }
 
     private RecommendationCategory parseCategory(String raw) {

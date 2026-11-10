@@ -157,7 +157,7 @@ class AgencyServiceTest {
 
         assertThatThrownBy(() -> agencyService.updateRelationship(
                 actorId, agencyOrgId, relId,
-                new UpdateClientRelationshipRequest(AgencyRelationshipStatus.ACTIVE, null, null)
+                new UpdateClientRelationshipRequest(AgencyRelationshipStatus.ACTIVE, null)
         )).isInstanceOf(BadRequestException.class)
           .hasMessageContaining("Agency cannot change relationship status");
     }
@@ -177,7 +177,7 @@ class AgencyServiceTest {
 
         assertThatThrownBy(() -> agencyService.updateRelationship(
                 actorId, agencyOrgId, relId,
-                new UpdateClientRelationshipRequest(AgencyRelationshipStatus.ACTIVE, null, null)
+                new UpdateClientRelationshipRequest(AgencyRelationshipStatus.ACTIVE, null)
         )).isInstanceOf(BadRequestException.class)
           .hasMessageContaining("Cannot modify relationship in REJECTED status");
     }
@@ -197,7 +197,7 @@ class AgencyServiceTest {
 
         assertThatThrownBy(() -> agencyService.updateRelationship(
                 actorId, agencyOrgId, relId,
-                new UpdateClientRelationshipRequest(AgencyRelationshipStatus.ACTIVE, null, null)
+                new UpdateClientRelationshipRequest(AgencyRelationshipStatus.ACTIVE, null)
         )).isInstanceOf(BadRequestException.class)
           .hasMessageContaining("Cannot modify relationship in REVOKED status");
     }
@@ -306,5 +306,104 @@ class AgencyServiceTest {
                 new LinkClientRequest("self-agency", AgencyAccessLevel.FULL, null)
         )).isInstanceOf(ConflictException.class)
           .hasMessageContaining("cannot link to itself");
+    }
+
+    @Test
+    @DisplayName("Scenario 8: Agency cannot escalate access level from READ_ONLY to FULL")
+    void agencyCannotEscalateAccessLevelToFull() {
+        UUID relId = UUID.randomUUID();
+        AgencyClientRelationship rel = new AgencyClientRelationship();
+        rel.setId(relId);
+        rel.setAgencyOrganizationId(agencyOrgId);
+        rel.setClientOrganizationId(clientOrgId);
+        rel.setStatus(AgencyRelationshipStatus.ACTIVE);
+        rel.setAccessLevel(AgencyAccessLevel.READ_ONLY);
+
+        when(relationshipRepository.findByIdAndAgencyOrganizationId(relId, agencyOrgId))
+                .thenReturn(Optional.of(rel));
+        when(relationshipRepository.save(any(AgencyClientRelationship.class)))
+                .thenAnswer(inv -> {
+                    AgencyClientRelationship r = inv.getArgument(0);
+                    r.setId(relId);
+                    return r;
+                });
+        Organization client = new Organization();
+        client.setId(clientOrgId);
+        client.setName("Client Org");
+        when(organizationRepository.findById(clientOrgId)).thenReturn(Optional.of(client));
+
+        // Access level is now immutable from agency side - verify it stays READ_ONLY
+        AgencyClientSummaryResponse response = agencyService.updateRelationship(
+                actorId, agencyOrgId, relId,
+                new UpdateClientRelationshipRequest(null, "Some notes")
+        );
+
+        assertThat(response.accessLevel()).isEqualTo(AgencyAccessLevel.READ_ONLY);
+    }
+
+    @Test
+    @DisplayName("Scenario 9: Agency cannot escalate access level from READ_ONLY to MARKETING_ONLY")
+    void agencyCannotEscalateAccessLevelToMarketingOnly() {
+        UUID relId = UUID.randomUUID();
+        AgencyClientRelationship rel = new AgencyClientRelationship();
+        rel.setId(relId);
+        rel.setAgencyOrganizationId(agencyOrgId);
+        rel.setClientOrganizationId(clientOrgId);
+        rel.setStatus(AgencyRelationshipStatus.ACTIVE);
+        rel.setAccessLevel(AgencyAccessLevel.READ_ONLY);
+
+        when(relationshipRepository.findByIdAndAgencyOrganizationId(relId, agencyOrgId))
+                .thenReturn(Optional.of(rel));
+        when(relationshipRepository.save(any(AgencyClientRelationship.class)))
+                .thenAnswer(inv -> {
+                    AgencyClientRelationship r = inv.getArgument(0);
+                    r.setId(relId);
+                    return r;
+                });
+        Organization client = new Organization();
+        client.setId(clientOrgId);
+        client.setName("Client Org");
+        when(organizationRepository.findById(clientOrgId)).thenReturn(Optional.of(client));
+
+        // Access level should remain READ_ONLY since agency cannot change it
+        AgencyClientSummaryResponse response = agencyService.updateRelationship(
+                actorId, agencyOrgId, relId,
+                new UpdateClientRelationshipRequest(null, "Some notes")
+        );
+
+        assertThat(response.accessLevel()).isEqualTo(AgencyAccessLevel.READ_ONLY);
+    }
+
+    @Test
+    @DisplayName("Scenario 10: Agency cannot change access level on ACTIVE relationship")
+    void agencyCannotChangeAccessLevelOnActiveRelationship() {
+        UUID relId = UUID.randomUUID();
+        AgencyClientRelationship rel = new AgencyClientRelationship();
+        rel.setId(relId);
+        rel.setAgencyOrganizationId(agencyOrgId);
+        rel.setClientOrganizationId(clientOrgId);
+        rel.setStatus(AgencyRelationshipStatus.ACTIVE);
+        rel.setAccessLevel(AgencyAccessLevel.FULL);
+
+        when(relationshipRepository.findByIdAndAgencyOrganizationId(relId, agencyOrgId))
+                .thenReturn(Optional.of(rel));
+        when(relationshipRepository.save(any(AgencyClientRelationship.class)))
+                .thenAnswer(inv -> {
+                    AgencyClientRelationship r = inv.getArgument(0);
+                    r.setId(relId);
+                    return r;
+                });
+        Organization client = new Organization();
+        client.setId(clientOrgId);
+        client.setName("Client Org");
+        when(organizationRepository.findById(clientOrgId)).thenReturn(Optional.of(client));
+
+        // Attempt to change access level - should be ignored, access level stays FULL
+        AgencyClientSummaryResponse response = agencyService.updateRelationship(
+                actorId, agencyOrgId, relId,
+                new UpdateClientRelationshipRequest(null, "Some notes")
+        );
+
+        assertThat(response.accessLevel()).isEqualTo(AgencyAccessLevel.FULL);
     }
 }

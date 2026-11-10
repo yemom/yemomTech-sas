@@ -124,17 +124,14 @@ public class GoogleIntegrationService {
         String clientId = googleProps.getClientId();
         String redirectUri = googleProps.getRedirectUri();
 
-        String authUrl = UriComponentsBuilder.fromHttpUrl(GOOGLE_AUTH_ENDPOINT)
-                .queryParam("client_id", clientId)
-                .queryParam("redirect_uri", redirectUri)
-                .queryParam("response_type", "code")
-                .queryParam("scope", DEFAULT_SCOPES)
-                .queryParam("state", state)
-                .queryParam("access_type", "offline")
-                .queryParam("prompt", "consent")
-                .encode()
-                .build()
-                .toUriString();
+        // Generate PKCE codes for enhanced OAuth security
+        String[] pkceCodes = oAuthClient.buildAuthorizationUrl(clientId, redirectUri);
+        String authUrl = pkceCodes[0];
+        String codeVerifier = pkceCodes[1];
+
+        // Store the code verifier in the credential so it can be retrieved during callback exchange
+        credential.setCodeVerifier(codeVerifier);
+        credential.setOauthState(state);
 
         return new GoogleConnectUrlResponse(authUrl, state);
     }
@@ -168,7 +165,8 @@ public class GoogleIntegrationService {
                     request.code(),
                     googleProps.getClientId(),
                     googleProps.getClientSecret(),
-                    googleProps.getRedirectUri()
+                    googleProps.getRedirectUri(),
+                    credential.getCodeVerifier()
             );
             userInfo = oAuthClient.fetchUserInfo(tokens.accessToken());
         } catch (Exception e) {
@@ -241,9 +239,10 @@ public class GoogleIntegrationService {
 
         try {
             // Real GA4 query using tenant's stored property ID, falling back to global config
-            String propertyId = (cred.getGa4PropertyId() != null && !cred.getGa4PropertyId().isBlank())
-                    ? cred.getGa4PropertyId()
-                    : googleProps.getGa4PropertyId();
+            String propertyId = cred.getGa4PropertyId();
+            if (propertyId == null || propertyId.isBlank()) {
+                throw new BadRequestException("GA4 property ID not configured for website: " + websiteId);
+            }
             if (propertyId != null && !propertyId.isBlank()) {
                 List<GoogleOAuthClient.Ga4DailyMetric> gaMetrics = oAuthClient.fetchGa4DailyMetrics(
                         accessToken, propertyId, startDate, endDate

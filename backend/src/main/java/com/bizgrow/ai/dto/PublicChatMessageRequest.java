@@ -2,6 +2,7 @@ package com.YemomBizGrow.ai.dto;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+import java.util.UUID;
 
 public record PublicChatMessageRequest(
         @NotBlank(message = "Session ID is required")
@@ -13,5 +14,7 @@ public record PublicChatMessageRequest(
 
         String visitorName,
         String visitorEmail,
-        String visitorPhone
+        String visitorPhone,
+
+        UUID websiteId
 ) {}

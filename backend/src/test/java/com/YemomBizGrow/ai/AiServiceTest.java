@@ -186,7 +186,7 @@ class AiServiceTest {
         when(conversationRepository.findByOrganizationIdAndSessionId(orgId, "sess-100")).thenReturn(Optional.of(conv));
         when(conversationRepository.save(any(ChatbotConversation.class))).thenAnswer(i -> i.getArgument(0));
         when(messageRepository.save(any(ChatbotMessage.class))).thenAnswer(i -> i.getArgument(0));
-        when(aiProvider.generateChatReply(any(), any(), any(), any())).thenReturn("Welcome to Bole Trading! How can I help?");
+        when(aiProvider.generateChatReply(any(), any(), any(), any(), any())).thenReturn("Welcome to Bole Trading! How can I help?");
 
         PublicChatMessageRequest req = new PublicChatMessageRequest(
                 "sess-100",

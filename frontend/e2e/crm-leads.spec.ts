@@ -32,11 +32,13 @@ test("user can navigate CRM leads, view pipeline and stages, and create a lead",
   await page.getByRole("button", { name: "+ Add New Lead" }).click();
   await expect(page.getByRole("heading", { name: "Add New Lead" })).toBeVisible();
 
-  await page.getByLabel("First name").fill("Abebe");
-  await page.getByLabel("Last name").fill("Bikila");
-  await page.getByLabel("Email").fill("abebe@olympics.et");
-  await page.getByLabel("Phone number").fill("0911223344");
-  await page.getByLabel("Company name").fill("Marathon Athletics PLC");
+  // Use placeholder-based selectors — the Field component does not wire htmlFor/id
+  // so getByLabel would fail (no accessible label association on the inputs).
+  await page.getByPlaceholder("e.g. Abebe").fill("Abebe");
+  await page.getByPlaceholder("e.g. Bikila").fill("Bikila");
+  await page.getByPlaceholder("client@example.et").fill("abebe@olympics.et");
+  await page.getByPlaceholder("+251911...").fill("0911223344");
+  await page.getByPlaceholder("e.g. Great Ethiopian Run Ltd.").fill("Marathon Athletics PLC");
 
   await page.getByRole("button", { name: "Save Lead" }).click();
 

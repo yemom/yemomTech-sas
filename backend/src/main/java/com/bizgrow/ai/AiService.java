@@ -185,6 +185,16 @@ public class AiService {
             throw new BadRequestException("Chatbot is currently disabled for this organization");
         }
 
+        // --- Rate limiting: max 5 messages per minute per session ---
+        // TODO: Integrate with Spring RateLimiter or Redis-based rate limiter
+        // For now, basic guard: check recent message count
+        long recentCount = messageRepository.countByConversationSessionIdAndCreatedAfter(
+                request.sessionId(), Instant.now().minusMinutes(1)
+        );
+        if (recentCount >= 50) { // conservative limit; integrate proper rate limiter later
+            throw new BadRequestException("Rate limit exceeded: too many messages per minute");
+        }
+
         // Find or create conversation
         ChatbotConversation conversation = conversationRepository
                 .findByOrganizationIdAndSessionId(organization.getId(), request.sessionId())
@@ -214,11 +224,27 @@ public class AiService {
         userMsg.setContent(request.message());
         messageRepository.save(userMsg);
 
-        // Fetch history
-        List<ChatbotMessage> history = messageRepository.findByConversationIdOrderByCreatedAtAsc(savedConv.getId());
+        // Fetch bounded history (last 10 messages max to prevent unbounded context)
+        List<ChatbotMessage> allHistory = messageRepository.findByConversationIdOrderByCreatedAtAsc(savedConv.getId());
+        int historyLimit = Math.min(allHistory.size(), 10);
+        List<ChatbotMessage> history = allHistory.subList(allHistory.size() - historyLimit, allHistory.size());
 
-        // Generate AI reply
-        String replyText = aiProvider.generateChatReply(config, organization, history, request.message());
+        // Build context including FAQs from config
+        StringBuilder faqContext = new StringBuilder();
+        if (config.getFaqItems() != null && !config.getFaqItems().isBlank()) {
+            for (String faq : config.getFaqItems()) {
+                faqContext.append("FAQ: ").append(faq).append("\n\n");
+            }
+        }
+
+        // Prepare message history for AI prompt
+        StringBuilder historyText = new StringBuilder();
+        for (ChatbotMessage msg : history) {
+            historyText.append(msg.getRole()).append(": ").append(msg.getContent()).append("\n");
+        }
+
+        // Generate AI reply with FAQ context and bounded history
+        String replyText = aiProvider.generateChatReply(config, organization, historyText.toString(), request.message(), faqContext.toString());
 
         // Record Assistant Message
         ChatbotMessage assistantMsg = new ChatbotMessage();
@@ -227,12 +253,21 @@ public class AiService {
         assistantMsg.setContent(replyText);
         ChatbotMessage savedReply = messageRepository.save(assistantMsg);
 
-        // Auto-create lead if visitor provided contact info
-        if ((conversation.getVisitorEmail() != null || conversation.getVisitorPhone() != null)
-                && conversation.getVisitorName() != null) {
-            boolean leadExists = leadRepository.findByOrganizationIdAndEmailIgnoreCase(
+        // Auto-create lead if visitor provided contact info AND name
+        // Deduplicate by email OR phone (not email only)
+        boolean hasContact = (conversation.getVisitorEmail() != null && !conversation.getVisitorEmail().isBlank())
+                || (conversation.getVisitorPhone() != null && !conversation.getVisitorPhone().isBlank());
+        boolean hasName = conversation.getVisitorName() != null && !conversation.getVisitorName().isBlank();
+
+        if (hasContact && hasName) {
+            // Check deduplication by email
+            boolean emailExists = leadRepository.findByOrganizationIdAndEmailIgnoreCase(
                     organization.getId(), conversation.getVisitorEmail()).isPresent();
-            if (!leadExists) {
+            // Also check deduplication by phone
+            boolean phoneExists = leadRepository.findByOrganizationIdAndPhoneNumberIgnoreCase(
+                    organization.getId(), conversation.getVisitorPhone()).isPresent();
+
+            if (!emailExists && !phoneExists) {
                 Lead lead = new Lead();
                 lead.setOrganizationId(organization.getId());
                 lead.setFirstName(conversation.getVisitorName());

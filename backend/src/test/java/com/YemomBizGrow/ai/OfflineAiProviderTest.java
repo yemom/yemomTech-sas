@@ -78,10 +78,10 @@ class OfflineAiProviderTest {
                 Map.of("question", "Where is your office located?", "answer", "Our office is in Bole, Addis Ababa, near Edna Mall.")
         ));
 
-        String reply1 = provider.generateChatReply(config, organization, Collections.emptyList(), "What are your opening hours?");
+        String reply1 = provider.generateChatReply(config, organization, Collections.emptyList(), "What are your opening hours?", "");
         assertThat(reply1).isEqualTo("We are open Monday to Friday from 8:30 AM to 5:30 PM (EAT).");
 
-        String reply2 = provider.generateChatReply(config, organization, Collections.emptyList(), "Where is your office located?");
+        String reply2 = provider.generateChatReply(config, organization, Collections.emptyList(), "Where is your office located?", "");
         assertThat(reply2).isEqualTo("Our office is in Bole, Addis Ababa, near Edna Mall.");
     }
 
@@ -90,10 +90,10 @@ class OfflineAiProviderTest {
         ChatbotConfig config = new ChatbotConfig();
         config.setGreetingMessage("Selam from Addis Tech!");
 
-        String greeting = provider.generateChatReply(config, organization, Collections.emptyList(), "Selam! How are you?");
+        String greeting = provider.generateChatReply(config, organization, Collections.emptyList(), "Selam! How are you?", "");
         assertThat(greeting).contains("Selam");
 
-        String pricing = provider.generateChatReply(config, organization, Collections.emptyList(), "How much does your service cost?");
+        String pricing = provider.generateChatReply(config, organization, Collections.emptyList(), "How much does your service cost?", "");
         assertThat(pricing).contains("pricing is tailored");
     }
 }

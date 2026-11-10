@@ -13,6 +13,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -73,11 +74,51 @@ public class GoogleOAuthClient {
     public record Ga4PropertyItem(String propertyId, String displayName) {}
     public record GscSiteItem(String siteUrl, String permissionLevel) {}
 
+    // PKCE (Proof Key for Code Exchange) parameters
+    private static final String CODE_CHALLENGE_METHOD = "S256";
+
+    /**
+     * Generates PKCE code verifier and challenge.
+     * The verifier is a high-entropy random string (43-128 characters).
+     * The challenge is the SHA-256 hash of the verifier, Base64url-encoded.
+     *
+     * @return a pair of (verifier, challenge)
+     */
+    public static String[] generatePkceCodes() {
+        // Generate a random code verifier (43-128 characters, URL-safe base64)
+        String verifier = generateRandomString(64);
+        String challenge = codeVerifierToCodeChallenge(verifier);
+        return new String[]{verifier, challenge};
+    }
+
+    /**
+     * Converts a code verifier to a code challenge using SHA-256 and Base64url encoding.
+     */
+    private static String codeVerifierToCodeChallenge(String verifier) {
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            byte[] digest = md.digest(verifier.getBytes(StandardCharsets.UTF_8));
+            return Base64.getUrlEncoder().withoutPadding().encodeToString(digest);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to generate PKCE code challenge", e);
+        }
+    }
+
+    private static String generateRandomString(int length) {
+        String chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~";
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < length; i++) {
+            sb.append(chars.charAt((int) (Math.random() * chars.length())));
+        }
+        return sb.toString();
+    }
+
     public TokenResponse exchangeAuthorizationCode(
             String code,
             String clientId,
             String clientSecret,
-            String redirectUri
+            String redirectUri,
+            String codeVerifier
     ) throws IOException, InterruptedException {
         if (clientId == null || clientId.isBlank() || clientSecret == null || clientSecret.isBlank()) {
             throw new IllegalStateException("Google OAuth credentials are not configured");
@@ -89,6 +130,12 @@ public class GoogleOAuthClient {
         params.put("client_secret", clientSecret);
         params.put("redirect_uri", redirectUri);
         params.put("grant_type", "authorization_code");
+        if (codeVerifier != null && !codeVerifier.isBlank()) {
+            params.put("code_verifier", codeVerifier);
+            params.put("code_challenge_method", CODE_CHALLENGE_METHOD);
+            String codeChallenge = codeVerifierToCodeChallenge(codeVerifier);
+            params.put("code_challenge", codeChallenge);
+        }
 
         String formBody = buildFormData(params);
 
@@ -407,5 +454,32 @@ public class GoogleOAuthClient {
             log.warn("Error listing Search Console sites from Google API: {}", e.getMessage());
             return List.of();
         }
+    }
+
+    /**
+     * Builds the Google OAuth authorization URL with PKCE (Proof Key for Code Exchange).
+     * Including PKCE is required by Google's OAuth 2.0 flow for enhanced security.
+     *
+     * @param clientId the Google OAuth client ID
+     * @param redirectUri the redirect URI registered with Google
+     * @return a pair of (authorizationUrl, codeVerifier) - the verifier must be stored and
+     *         passed when exchanging the authorization code for tokens
+     */
+    public String[] buildAuthorizationUrl(String clientId, String redirectUri) {
+        // Generate PKCE codes
+        String[] pkceCodes = generatePkceCodes();
+        String codeVerifier = pkceCodes[0];
+        String codeChallenge = pkceCodes[1];
+
+        // Build the authorization URL with PKCE parameters
+        String authUrl = "https://accounts.google.com/o/oauth2/v2/auth?" +
+                "client_id=" + clientId +
+                "&redirect_uri=" + redirectUri +
+                "&response_type=code" +
+                "&scope=openid%20email%20profile" +
+                "&code_challenge=" + codeChallenge +
+                "&code_challenge_method=" + CODE_CHALLENGE_METHOD;
+
+        return new String[]{authUrl, codeVerifier};
     }
 }

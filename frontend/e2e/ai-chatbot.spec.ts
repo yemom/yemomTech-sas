@@ -19,8 +19,8 @@ test("user can navigate to AI recommendations and assistant interface", async ({
   await page.getByRole("button", { name: "Create workspace" }).click();
   await expect(page).toHaveURL(/\/workspace$/);
 
-  // Navigate to AI Assistant
-  await page.getByRole("link", { name: "AI Assistant" }).click();
+  // Navigate to AI Insights & Bot
+  await page.getByRole("link", { name: "AI Insights & Bot" }).click();
   await expect(page).toHaveURL(/\/workspace\/ai$/);
 
   // Verify AI header is visible

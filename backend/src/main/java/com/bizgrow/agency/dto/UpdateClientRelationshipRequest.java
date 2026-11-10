@@ -5,6 +5,5 @@ import com.YemomBizGrow.agency.AgencyRelationshipStatus;
 
 public record UpdateClientRelationshipRequest(
         AgencyRelationshipStatus status,
-        AgencyAccessLevel accessLevel,
         String notes
 ) {}

@@ -14,14 +14,14 @@ WORKDIR /app
 
 COPY frontend/package.json frontend/package-lock.json ./
 
-RUN npm ci
+RUN npm ci --prefer-offline
 
 # ---- Stage 2: builder ----
 FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copy node_modules from deps stage so we can typecheck too
+# Copy node_modules from deps stage
 COPY --from=deps /app/node_modules ./node_modules
 COPY frontend/ .
 
@@ -29,10 +29,14 @@ COPY frontend/ .
 ARG NEXT_PUBLIC_API_BASE_URL=http://localhost:8080/api/v1
 ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
 
-# Enable standalone output so the runtime stage is self-contained
+# Disable telemetry and enable standalone output
 ENV NEXT_TELEMETRY_DISABLED=1
 
 RUN npm run build
+
+# Ensure public/ directory always exists so runtime COPY never fails
+# (Docker BuildKit fails if the source path is absent or only .gitkeep)
+RUN mkdir -p /app/public
 
 # ---- Stage 3: runtime ----
 FROM node:20-alpine AS runtime
@@ -49,10 +53,12 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 
-# Copy the standalone Next.js server and static assets
+# Copy the standalone Next.js server
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static    ./.next/static
-COPY --from=builder --chown=nextjs:nodejs /app/public          ./public
+# Copy static assets
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+# Copy public assets (directory is guaranteed to exist from builder RUN mkdir -p above)
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 
 HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=10 \
   CMD wget -qO- http://localhost:3000/ || exit 1

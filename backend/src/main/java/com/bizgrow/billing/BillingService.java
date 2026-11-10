@@ -255,72 +255,48 @@ public class BillingService {
                     tx.getPlan().getName(), null, msg);
         }
 
-        if (true) {
+        // All validation passed — mark as successful and activate subscription
+        tx.setStatus(PaymentStatus.SUCCESS);
+        tx.setVerifiedAt(Instant.now());
+        tx.setChapaTransactionId(verifyResult.chapaTransactionId() != null ? verifyResult.chapaTransactionId() : root.path("data").path("reference").asText(txRef));
+        transactionRepository.save(tx);
 
-            tx.setStatus(PaymentStatus.SUCCESS);
-            tx.setVerifiedAt(Instant.now());
-            tx.setChapaTransactionId(verifyResult.chapaTransactionId());
-            transactionRepository.save(tx);
+        // Update organization subscription
+        OrganizationSubscription sub = subscriptionRepository.findByOrganizationId(orgId)
+                .orElseGet(() -> createDefaultFreeSubscription(orgId));
 
-            // Update organization subscription
-            OrganizationSubscription sub = subscriptionRepository.findByOrganizationId(orgId)
-                    .orElseGet(() -> createDefaultFreeSubscription(orgId));
+        sub.setPlan(tx.getPlan());
+        sub.setStatus(SubscriptionStatus.ACTIVE);
+        sub.setCurrentPeriodStart(Instant.now());
+        sub.setCurrentPeriodEnd(Instant.now().plus(30, ChronoUnit.DAYS));
+        sub.setCancelledAt(null);
+        sub.setCancelAtPeriodEnd(false);
+        subscriptionRepository.save(sub);
 
-            SubscriptionPlan newPlan = tx.getPlan();
-            sub.setPlan(newPlan);
-            sub.setStatus(SubscriptionStatus.ACTIVE);
-            sub.setCurrentPeriodStart(Instant.now());
-            sub.setCurrentPeriodEnd(Instant.now().plus(30, ChronoUnit.DAYS));
-            sub.setCancelledAt(null);
-            sub.setCancelAtPeriodEnd(false);
-            subscriptionRepository.save(sub);
+        recordBillingHistory(orgId, tx.getId(), sub.getId(), BillingEventType.PAYMENT_SUCCESS,
+                "Payment of " + tx.getAmountEtb() + " ETB succeeded via Chapa. Upgraded to " + tx.getPlan().getName(),
+                tx.getAmountEtb());
 
-            recordBillingHistory(orgId, tx.getId(), sub.getId(), BillingEventType.PAYMENT_SUCCESS,
-                    "Payment of " + tx.getAmountEtb() + " ETB succeeded via Chapa. Upgraded to " + newPlan.getName(),
-                    tx.getAmountEtb());
+        recordBillingHistory(orgId, tx.getId(), sub.getId(), BillingEventType.SUBSCRIPTION_UPGRADED,
+                "Subscription upgraded to " + tx.getPlan().getName() + " plan",
+                tx.getAmountEtb());
 
-            recordBillingHistory(orgId, tx.getId(), sub.getId(), BillingEventType.SUBSCRIPTION_UPGRADED,
-                    "Subscription upgraded to " + newPlan.getName() + " plan",
-                    tx.getAmountEtb());
+        auditService.record(actorUserId, orgId, AuditAction.PAYMENT_COMPLETED,
+                "PaymentTransaction", tx.getId(),
+                Map.of("txRef", txRef, "plan", tx.getPlan().getSlug(), "amount", tx.getAmountEtb().doubleValue()));
+        auditService.record(actorUserId, orgId, AuditAction.SUBSCRIPTION_UPGRADED,
+                "SubscriptionPlan", tx.getPlan().getId(),
+                Map.of("newPlan", tx.getPlan().getSlug()));
 
-            auditService.record(actorUserId, orgId, AuditAction.PAYMENT_COMPLETED,
-                    "PaymentTransaction", tx.getId(),
-                    Map.of("txRef", txRef, "plan", newPlan.getSlug(), "amount", tx.getAmountEtb().doubleValue()));
-            auditService.record(actorUserId, orgId, AuditAction.SUBSCRIPTION_UPGRADED,
-                    "SubscriptionPlan", newPlan.getId(),
-                    Map.of("newPlan", newPlan.getSlug()));
-
-            return new VerifyPaymentResponse(
-                    tx.getTxRef(),
-                    PaymentStatus.SUCCESS,
-                    tx.getAmountEtb(),
-                    tx.getCurrency(),
-                    newPlan.getName(),
-                    tx.getVerifiedAt(),
-                    "Payment verified successfully! Welcome to the " + newPlan.getName() + " plan."
-            );
-        } else {
-            tx.setStatus(PaymentStatus.FAILED);
-            tx.setFailureReason(verifyResult.message());
-            transactionRepository.save(tx);
-
-            recordBillingHistory(orgId, tx.getId(), null, BillingEventType.PAYMENT_FAILED,
-                    "Payment failed: " + verifyResult.message(), tx.getAmountEtb());
-
-            auditService.record(actorUserId, orgId, AuditAction.PAYMENT_FAILED,
-                    "PaymentTransaction", tx.getId(),
-                    Map.of("txRef", txRef, "reason", verifyResult.message()));
-
-            return new VerifyPaymentResponse(
-                    tx.getTxRef(),
-                    PaymentStatus.FAILED,
-                    tx.getAmountEtb(),
-                    tx.getCurrency(),
-                    tx.getPlan() != null ? tx.getPlan().getName() : "Subscription",
-                    null,
-                    "Payment verification failed: " + verifyResult.message()
-            );
-        }
+        return new VerifyPaymentResponse(
+                tx.getTxRef(),
+                PaymentStatus.SUCCESS,
+                tx.getAmountEtb(),
+                tx.getCurrency(),
+                tx.getPlan().getName(),
+                tx.getVerifiedAt(),
+                "Payment verified successfully! Welcome to the " + tx.getPlan().getName() + " plan."
+        );
     }
 
     /**
@@ -336,30 +312,30 @@ public class BillingService {
         try {
             JsonNode root = objectMapper.readTree(rawBody);
             String extractedRef = root.path("data").path("tx_ref").asText("");
-            final String txRef = extractedRef.isBlank() ? root.path("tx_ref").asText("") : extractedRef;
+            final String webhookTxRef = extractedRef.isBlank() ? root.path("tx_ref").asText("") : extractedRef;
 
-            if (txRef.isBlank()) {
+            if (webhookTxRef.isBlank()) {
                 log.warn("Chapa webhook missing tx_ref in payload: {}", rawBody);
                 return;
             }
 
-            PaymentTransaction tx = transactionRepository.findByTxRefForUpdate(txRef)
-                    .orElseGet(() -> transactionRepository.findByTxRef(txRef).orElse(null));
+            PaymentTransaction tx = transactionRepository.findByTxRefForUpdate(webhookTxRef)
+                    .orElseGet(() -> transactionRepository.findByTxRef(webhookTxRef).orElse(null));
             if (tx == null) {
-                log.warn("Chapa webhook received for unknown txRef: {}", txRef);
+                log.warn("Chapa webhook received for unknown txRef: {}", webhookTxRef);
                 return;
             }
 
             // Webhook replay attack protection / idempotency & state downgrade prevention
             if (tx.getStatus() == PaymentStatus.SUCCESS) {
-                log.info("Chapa webhook txRef {} already marked SUCCESS, skipping duplicate activation", txRef);
+                log.info("Chapa webhook txRef {} already marked SUCCESS, skipping duplicate activation", webhookTxRef);
                 return;
             }
 
             // Server-side verification with Chapa before activating subscription
-            ChapaClient.ChapaVerifyResult verifyResult = chapaClient.verify(txRef);
+            ChapaClient.ChapaVerifyResult verifyResult = chapaClient.verify(webhookTxRef);
             if (!verifyResult.success() || !"success".equalsIgnoreCase(verifyResult.status())) {
-                log.warn("Chapa server verification failed for webhook txRef {}: {}", txRef, verifyResult.message());
+                log.warn("Chapa server verification failed for webhook txRef {}: {}", webhookTxRef, verifyResult.message());
                 tx.setStatus(PaymentStatus.FAILED);
                 tx.setFailureReason("Server verification failed: " + verifyResult.message());
                 transactionRepository.save(tx);
@@ -368,7 +344,7 @@ public class BillingService {
 
             // Fail-closed: require valid, non-null, exact amount from server verification
             if (verifyResult.amount() == null || verifyResult.amount().compareTo(tx.getAmountEtb()) != 0) {
-                log.error("Server verified amount mismatch or missing for txRef {}: expected {} but got {}", txRef, tx.getAmountEtb(), verifyResult.amount());
+                log.error("Server verified amount mismatch or missing for txRef {}: expected {} but got {}", webhookTxRef, tx.getAmountEtb(), verifyResult.amount());
                 tx.setStatus(PaymentStatus.FAILED);
                 tx.setFailureReason("Verified amount mismatch or missing");
                 transactionRepository.save(tx);
@@ -377,7 +353,7 @@ public class BillingService {
 
             // Fail-closed: require valid, non-blank, exact currency from server verification
             if (verifyResult.currency() == null || !verifyResult.currency().equalsIgnoreCase(tx.getCurrency())) {
-                log.error("Server verified currency mismatch or missing for txRef {}: expected {} but got {}", txRef, tx.getCurrency(), verifyResult.currency());
+                log.error("Server verified currency mismatch or missing for txRef {}: expected {} but got {}", webhookTxRef, tx.getCurrency(), verifyResult.currency());
                 tx.setStatus(PaymentStatus.FAILED);
                 tx.setFailureReason("Verified currency mismatch or missing");
                 transactionRepository.save(tx);
@@ -386,7 +362,7 @@ public class BillingService {
 
             // Fail-closed: verify matching txRef
             if (verifyResult.txRef() == null || !verifyResult.txRef().equals(tx.getTxRef())) {
-                log.error("Server verified txRef mismatch for txRef {}: got {}", txRef, verifyResult.txRef());
+                log.error("Server verified txRef mismatch for txRef {}: got {}", webhookTxRef, verifyResult.txRef());
                 tx.setStatus(PaymentStatus.FAILED);
                 tx.setFailureReason("Verified txRef mismatch");
                 transactionRepository.save(tx);
@@ -395,7 +371,7 @@ public class BillingService {
 
             tx.setStatus(PaymentStatus.SUCCESS);
             tx.setVerifiedAt(Instant.now());
-            tx.setChapaTransactionId(verifyResult.chapaTransactionId() != null ? verifyResult.chapaTransactionId() : root.path("data").path("reference").asText(txRef));
+            tx.setChapaTransactionId(verifyResult.chapaTransactionId() != null ? verifyResult.chapaTransactionId() : root.path("data").path("reference").asText(webhookTxRef));
             transactionRepository.save(tx);
 
             OrganizationSubscription sub = subscriptionRepository.findByOrganizationId(tx.getOrganizationId())
@@ -411,7 +387,7 @@ public class BillingService {
                     "Webhook confirmed payment of " + tx.getAmountEtb() + " ETB for " + tx.getPlan().getName(),
                     tx.getAmountEtb());
 
-            log.info("Chapa webhook successfully verified and applied payment for txRef: {}", txRef);
+            log.info("Chapa webhook successfully verified and applied payment for txRef: {}", webhookTxRef);
 
         } catch (Exception e) {
             log.error("Failed to parse Chapa webhook payload", e);
