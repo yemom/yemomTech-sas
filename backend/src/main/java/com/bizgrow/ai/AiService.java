@@ -34,6 +34,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -189,7 +190,7 @@ public class AiService {
         // TODO: Integrate with Spring RateLimiter or Redis-based rate limiter
         // For now, basic guard: check recent message count
         long recentCount = messageRepository.countByConversationSessionIdAndCreatedAfter(
-                request.sessionId(), Instant.now().minusMinutes(1)
+                request.sessionId(), Instant.now().minusSeconds(60)
         );
         if (recentCount >= 50) { // conservative limit; integrate proper rate limiter later
             throw new BadRequestException("Rate limit exceeded: too many messages per minute");
@@ -231,8 +232,8 @@ public class AiService {
 
         // Build context including FAQs from config
         StringBuilder faqContext = new StringBuilder();
-        if (config.getFaqItems() != null && !config.getFaqItems().isBlank()) {
-            for (String faq : config.getFaqItems()) {
+        if (config.getFaqItems() != null && !config.getFaqItems().isEmpty()) {
+            for (Map<String, Object> faq : config.getFaqItems()) {
                 faqContext.append("FAQ: ").append(faq).append("\n\n");
             }
         }
@@ -244,7 +245,7 @@ public class AiService {
         }
 
         // Generate AI reply with FAQ context and bounded history
-        String replyText = aiProvider.generateChatReply(config, organization, historyText.toString(), request.message(), faqContext.toString());
+        String replyText = aiProvider.generateChatReply(config, organization, history, request.message(), faqContext.toString());
 
         // Record Assistant Message
         ChatbotMessage assistantMsg = new ChatbotMessage();

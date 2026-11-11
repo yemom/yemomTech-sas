@@ -163,7 +163,7 @@ class AiServiceTest {
         when(organizationRepository.findBySlug("bole-trading")).thenReturn(Optional.of(organization));
         when(chatbotConfigRepository.findByOrganizationId(orgId)).thenReturn(Optional.of(config));
 
-        PublicChatMessageRequest req = new PublicChatMessageRequest("sess-1", "Hello", null, null, null);
+        PublicChatMessageRequest req = new PublicChatMessageRequest("sess-1", "Hello", null, null, null, orgId);
 
         assertThatThrownBy(() -> aiService.handlePublicChat("bole-trading", req))
                 .isInstanceOf(BadRequestException.class)
@@ -193,7 +193,8 @@ class AiServiceTest {
                 "Tell me about your services",
                 "Abebe Kebede",
                 "abebe@example.com",
-                "+251911223344");
+                "+251911223344",
+                orgId);
 
         PublicChatMessageResponse resp = aiService.handlePublicChat("bole-trading", req);
 

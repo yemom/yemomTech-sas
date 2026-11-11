@@ -76,7 +76,7 @@ public class SafeHttpClient {
             initialPinnedIp = ssrfProtection.validateAndResolve(targetUri);
         } catch (Exception e) {
             log.warn("SSRF blocked or DNS failed for {}: {}", targetUri, e.getMessage());
-            return new SafeFetchResult(targetUri, targetUri, 0, null, null, Duration.between(startTime, Instant.now()), new ArrayList<>(), false);
+            return new SafeFetchResult(targetUri, targetUri, 0, null, null, Duration.between(startTime, Instant.now()).toMillis(), new ArrayList<>(), false);
         }
 
         URI currentUri = targetUri;
@@ -148,7 +148,7 @@ public class SafeHttpClient {
 
                 if (headers.size() > MAX_HEADER_COUNT) {
                     long elapsed = Duration.between(startTime, Instant.now()).toMillis();
-                    return new SafeFetchResult(targetUri, currentUri, 431, "text/plain", "Header Too Large: too many headers", Duration.between(startTime, Instant.now()), redirectChain, false);
+                    return new SafeFetchResult(targetUri, currentUri, 431, "text/plain", "Header Too Large: too many headers", elapsed, redirectChain, false);
                 }
 
                 StringBuilder requestBuilder = new StringBuilder();

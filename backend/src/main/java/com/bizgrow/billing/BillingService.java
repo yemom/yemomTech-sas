@@ -258,7 +258,7 @@ public class BillingService {
         // All validation passed — mark as successful and activate subscription
         tx.setStatus(PaymentStatus.SUCCESS);
         tx.setVerifiedAt(Instant.now());
-        tx.setChapaTransactionId(verifyResult.chapaTransactionId() != null ? verifyResult.chapaTransactionId() : root.path("data").path("reference").asText(txRef));
+        tx.setChapaTransactionId(verifyResult.chapaTransactionId() != null ? verifyResult.chapaTransactionId() : txRef);
         transactionRepository.save(tx);
 
         // Update organization subscription

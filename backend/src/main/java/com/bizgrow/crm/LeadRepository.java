@@ -23,6 +23,8 @@ public interface LeadRepository extends JpaRepository<Lead, UUID> {
 
     Optional<Lead> findByOrganizationIdAndEmailIgnoreCase(UUID organizationId, String email);
 
+    Optional<Lead> findByOrganizationIdAndPhoneNumberIgnoreCase(UUID organizationId, String phoneNumber);
+
     long countByOrganizationIdAndStatus(UUID organizationId, LeadStatus status);
 
     long countByOrganizationIdAndStage(UUID organizationId, LeadStage stage);

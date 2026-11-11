@@ -73,15 +73,30 @@ class OfflineAiProviderTest {
         ChatbotConfig config = new ChatbotConfig();
         config.setBotName("Support Bot");
         config.setGreetingMessage("Welcome!");
-        config.setFaqItems(List.of(
+        List<Map<String, Object>> faqItems = List.of(
                 Map.of("question", "What are your business opening hours?", "answer", "We are open Monday to Friday from 8:30 AM to 5:30 PM (EAT)."),
                 Map.of("question", "Where is your office located?", "answer", "Our office is in Bole, Addis Ababa, near Edna Mall.")
-        ));
+        );
+        // Build FAQ context string from config FAQ items (format: "question: answer\n\n")
+        StringBuilder faqContextBuilder = new StringBuilder();
+        for (Map<String, Object> faq : faqItems) {
+            String question = (String) faq.get("question");
+            String answer = (String) faq.get("answer");
+            if (question != null && answer != null) {
+                faqContextBuilder.append(question).append(": ").append(answer).append("\n\n");
+            }
+        }
+        String faqContext = faqContextBuilder.toString();
 
-        String reply1 = provider.generateChatReply(config, organization, Collections.emptyList(), "What are your opening hours?", "");
+        ChatbotConfig configWithFaq = new ChatbotConfig();
+        configWithFaq.setBotName("Support Bot");
+        configWithFaq.setGreetingMessage("Welcome!");
+        configWithFaq.setFaqItems(faqItems);
+
+        String reply1 = provider.generateChatReply(configWithFaq, organization, Collections.emptyList(), "What are your opening hours?", faqContext);
         assertThat(reply1).isEqualTo("We are open Monday to Friday from 8:30 AM to 5:30 PM (EAT).");
 
-        String reply2 = provider.generateChatReply(config, organization, Collections.emptyList(), "Where is your office located?", "");
+        String reply2 = provider.generateChatReply(configWithFaq, organization, Collections.emptyList(), "Where is your office located?", faqContext);
         assertThat(reply2).isEqualTo("Our office is in Bole, Addis Ababa, near Edna Mall.");
     }
 

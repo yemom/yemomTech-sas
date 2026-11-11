@@ -122,6 +122,8 @@ class GoogleIntegrationServiceTest {
         when(websiteRepository.findByIdAndOrganizationId(websiteId, orgId)).thenReturn(Optional.of(website));
         when(credentialRepository.findByOrganizationIdAndWebsiteId(orgId, websiteId)).thenReturn(Optional.empty());
         when(encryptionService.encrypt(any())).thenReturn("encrypted_dummy");
+        when(oAuthClient.buildAuthorizationUrl(eq("test-client-id"), eq("http://localhost:3000/callback")))
+                .thenReturn(new String[]{"https://accounts.google.com/o/oauth2/v2/auth?client_id=test-client-id&redirect_uri=http%3A%2F%2Flocalhost%3A3000%2Fcallback&state=test-state", "test-code-verifier"});
 
         GoogleConnectUrlResponse response = service.generateConnectUrl(actorId, orgId, websiteId);
 
@@ -141,10 +143,11 @@ class GoogleIntegrationServiceTest {
         cred.setOrganizationId(orgId);
         cred.setWebsiteId(websiteId);
         cred.setOauthState("valid-state-123");
+        cred.setCodeVerifier("test-code-verifier");
         when(credentialRepository.findByOrganizationIdAndWebsiteId(orgId, websiteId)).thenReturn(Optional.of(cred));
         when(encryptionService.encrypt(any())).thenReturn("encrypted_token");
 
-        when(oAuthClient.exchangeAuthorizationCode(eq("test-auth-code"), eq("test-client-id"), eq("test-secret"), any()))
+        when(oAuthClient.exchangeAuthorizationCode(eq("test-auth-code"), eq("test-client-id"), eq("test-secret"), eq("http://localhost:3000/callback"), eq("test-code-verifier")))
                 .thenReturn(new GoogleOAuthClient.TokenResponse("real_access_token", "real_refresh_token", 3600L, "openid email"));
         when(oAuthClient.fetchUserInfo("real_access_token"))
                 .thenReturn(new GoogleOAuthClient.UserInfoResponse("123", "verified@example.com", "Verified User"));
