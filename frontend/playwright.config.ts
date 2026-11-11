@@ -16,12 +16,20 @@ export default defineConfig({
     baseURL: process.env.E2E_BASE_URL ?? "http://localhost:3001",
     trace: "on-first-retry",
     screenshot: "only-on-failure",
+    video: "retain-on-failure",
+    channel: "chrome", // Use actual installed Google Chrome instead of bundled Chromium
     timezoneId: "Africa/Addis_Ababa",
   },
   projects: [
     {
+      name: "chrome",
+      use: { ...devices["Desktop Chrome"] },
+    },
+    // Keep chromium project for CI headless fallback
+    {
       name: "chromium",
       use: { ...devices["Desktop Chrome"] },
+      // CI: headed=false by default; override with CI env if needed
     },
   ],
   webServer: process.env.CI
