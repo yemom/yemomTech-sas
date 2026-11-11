@@ -23,5 +23,9 @@ public interface PaymentTransactionRepository extends JpaRepository<PaymentTrans
 
     Optional<PaymentTransaction> findByTxRefAndOrganizationId(String txRef, UUID organizationId);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT pt FROM PaymentTransaction pt WHERE pt.txRef = :txRef AND pt.organizationId = :organizationId")
+    Optional<PaymentTransaction> findByTxRefAndOrganizationIdForUpdate(@Param("txRef") String txRef, @Param("organizationId") UUID organizationId);
+
     Page<PaymentTransaction> findAllByOrganizationIdOrderByCreatedAtDesc(UUID organizationId, Pageable pageable);
 }

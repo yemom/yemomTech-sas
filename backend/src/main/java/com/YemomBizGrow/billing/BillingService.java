@@ -192,8 +192,9 @@ public class BillingService {
     public VerifyPaymentResponse verifyPayment(UUID orgId, String txRef, UUID actorUserId) {
         accessControlService.requirePermission(actorUserId, orgId, Permission.ORG_VIEW);
 
-        PaymentTransaction tx = transactionRepository.findByTxRefAndOrganizationId(txRef, orgId)
-                .orElseThrow(() -> new NotFoundException("Payment transaction not found: " + txRef));
+        PaymentTransaction tx = transactionRepository.findByTxRefAndOrganizationIdForUpdate(txRef, orgId)
+                .orElseGet(() -> transactionRepository.findByTxRefAndOrganizationId(txRef, orgId)
+                        .orElseThrow(() -> new NotFoundException("Payment transaction not found: " + txRef)));
 
         // Idempotency check: if already SUCCESS, return cached success
         if (tx.getStatus() == PaymentStatus.SUCCESS) {
@@ -248,6 +249,16 @@ public class BillingService {
         if (verifyResult.txRef() == null || !verifyResult.txRef().equals(tx.getTxRef())) {
             tx.setStatus(PaymentStatus.FAILED);
             String msg = "Payment txRef mismatch: expected " + tx.getTxRef() + " but got " + verifyResult.txRef();
+            tx.setFailureReason(msg);
+            transactionRepository.save(tx);
+            log.warn("Security Alert: {}", msg);
+            return new VerifyPaymentResponse(txRef, PaymentStatus.FAILED, tx.getAmountEtb(), tx.getCurrency(),
+                    tx.getPlan().getName(), null, msg);
+        }
+
+        if (verifyResult.chapaTransactionId() == null || verifyResult.chapaTransactionId().isBlank()) {
+            tx.setStatus(PaymentStatus.FAILED);
+            String msg = "Payment provider transaction identity missing or invalid";
             tx.setFailureReason(msg);
             transactionRepository.save(tx);
             log.warn("Security Alert: {}", msg);
@@ -365,6 +376,15 @@ public class BillingService {
                 log.error("Server verified txRef mismatch for txRef {}: got {}", webhookTxRef, verifyResult.txRef());
                 tx.setStatus(PaymentStatus.FAILED);
                 tx.setFailureReason("Verified txRef mismatch");
+                transactionRepository.save(tx);
+                return;
+            }
+
+            // Fail-closed: verify provider transaction identity
+            if (verifyResult.chapaTransactionId() == null || verifyResult.chapaTransactionId().isBlank()) {
+                log.error("Server verified chapaTransactionId missing for txRef {}", webhookTxRef);
+                tx.setStatus(PaymentStatus.FAILED);
+                tx.setFailureReason("Verified provider transaction ID missing");
                 transactionRepository.save(tx);
                 return;
             }

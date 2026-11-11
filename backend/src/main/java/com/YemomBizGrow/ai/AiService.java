@@ -33,6 +33,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -172,6 +174,11 @@ public class AiService {
 
     @Transactional
     public PublicChatMessageResponse handlePublicChat(String orgSlug, PublicChatMessageRequest request) {
+        return handlePublicChat(orgSlug, request, null);
+    }
+
+    @Transactional
+    public PublicChatMessageResponse handlePublicChat(String orgSlug, PublicChatMessageRequest request, String clientIp) {
         Organization organization = organizationRepository.findBySlug(orgSlug)
                 .orElseThrow(() -> new NotFoundException("Organization not found: " + orgSlug));
 
@@ -192,7 +199,7 @@ public class AiService {
         long recentCount = messageRepository.countByConversationSessionIdAndCreatedAfter(
                 request.sessionId(), Instant.now().minusSeconds(60)
         );
-        if (recentCount >= 50) { // conservative limit; integrate proper rate limiter later
+        if (recentCount >= 5) {
             throw new BadRequestException("Rate limit exceeded: too many messages per minute");
         }
 
@@ -226,9 +233,10 @@ public class AiService {
         messageRepository.save(userMsg);
 
         // Fetch bounded history (last 10 messages max to prevent unbounded context)
-        List<ChatbotMessage> allHistory = messageRepository.findByConversationIdOrderByCreatedAtAsc(savedConv.getId());
-        int historyLimit = Math.min(allHistory.size(), 10);
-        List<ChatbotMessage> history = allHistory.subList(allHistory.size() - historyLimit, allHistory.size());
+        List<ChatbotMessage> history = new ArrayList<>(
+                messageRepository.findTop10ByConversationIdOrderByCreatedAtDesc(savedConv.getId())
+        );
+        Collections.reverse(history);
 
         // Build context including FAQs from config
         StringBuilder faqContext = new StringBuilder();

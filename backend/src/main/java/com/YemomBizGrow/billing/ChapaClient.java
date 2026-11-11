@@ -161,7 +161,17 @@ public class ChapaClient {
                 String txStatus = data.path("status").asText("");
 
                 if ("success".equalsIgnoreCase(status) && "success".equalsIgnoreCase(txStatus)) {
-                    String chapaRef = data.path("reference").asText(txRef);
+                    String providerTxRef = data.has("tx_ref") && !data.path("tx_ref").isNull()
+                            ? data.path("tx_ref").asText("").trim()
+                            : "";
+                    String chapaRef = data.has("reference") && !data.path("reference").isNull()
+                            ? data.path("reference").asText("").trim()
+                            : "";
+
+                    if (providerTxRef.isBlank() || chapaRef.isBlank()) {
+                        log.warn("Chapa verify response missing provider tx_ref or reference: tx_ref={}, reference={}", providerTxRef, chapaRef);
+                        return new ChapaVerifyResult(false, "invalid_provider_data", providerTxRef.isBlank() ? null : providerTxRef, chapaRef.isBlank() ? null : chapaRef, null, null, "Provider response missing valid transaction reference identity");
+                    }
                     BigDecimal amount = null;
                     if (data.has("amount") && !data.path("amount").isNull() && !data.path("amount").asText().isBlank()) {
                         try {
@@ -179,7 +189,7 @@ public class ChapaClient {
                         return new ChapaVerifyResult(false, "invalid_provider_data", txRef, chapaRef, amount, currency, "Provider response missing valid amount or currency");
                     }
 
-                    return new ChapaVerifyResult(true, "success", txRef, chapaRef, amount, currency, "Transaction verified successfully");
+                    return new ChapaVerifyResult(true, "success", providerTxRef, chapaRef, amount, currency, "Transaction verified successfully");
                 } else {
                     return new ChapaVerifyResult(false, txStatus.isBlank() ? "failed" : txStatus, txRef, null, null, null, "Transaction not successful");
                 }

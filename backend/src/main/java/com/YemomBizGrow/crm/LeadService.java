@@ -365,25 +365,54 @@ public class LeadService {
         log.info("Public lead captured for org slug '{}' with lead ID {}", orgSlug, lead.getId());
     }
 
+    private static final java.util.concurrent.ConcurrentHashMap<String, long[]> FALLBACK_RATE_CACHE = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final int RATE_LIMIT_MAX_REQUESTS = 10;
+    private static final long RATE_LIMIT_WINDOW_MILLIS = 15 * 60 * 1000L; // 15 minutes
+
     private void enforceLeadRateLimit(String clientIp) {
-        if (redisTemplate == null || clientIp == null || clientIp.isBlank()) {
+        if (clientIp == null || clientIp.isBlank()) {
             return;
         }
-        try {
-            String key = "lead:capture:ip:" + TokenHasher.sha256Hex(clientIp);
-            Long count = redisTemplate.execute(
-                    INCR_EXPIRE_SCRIPT,
-                    Collections.singletonList(key),
-                    String.valueOf(900L) // 15 minutes window
-            );
-            if (count != null && count > 10) {
-                log.warn("Public lead submission rate limit exceeded for IP {}", clientIp);
-                throw new TooManyRequestsException("Too many submission attempts from your network. Please try again in 15 minutes.");
+        if (redisTemplate != null) {
+            try {
+                String key = "lead:capture:ip:" + TokenHasher.sha256Hex(clientIp);
+                Long count = redisTemplate.execute(
+                        INCR_EXPIRE_SCRIPT,
+                        Collections.singletonList(key),
+                        String.valueOf(900L) // 15 minutes window
+                );
+                if (count != null && count > RATE_LIMIT_MAX_REQUESTS) {
+                    log.warn("Public lead submission rate limit exceeded for IP {}", clientIp);
+                    throw new TooManyRequestsException("Too many submission attempts from your network. Please try again in 15 minutes.");
+                }
+                return;
+            } catch (TooManyRequestsException e) {
+                throw e;
+            } catch (Exception e) {
+                log.warn("Redis lead rate limit failed, falling back to in-memory rate limiter: {}", e.getMessage());
             }
-        } catch (TooManyRequestsException e) {
-            throw e;
-        } catch (Exception e) {
-            log.warn("Lead rate limit check failed open: {}", e.getMessage());
+        }
+
+        enforceInMemoryRateLimit(clientIp);
+    }
+
+    private void enforceInMemoryRateLimit(String clientIp) {
+        long now = System.currentTimeMillis();
+        if (FALLBACK_RATE_CACHE.size() > 10000) {
+            FALLBACK_RATE_CACHE.entrySet().removeIf(entry -> now - entry.getValue()[1] > RATE_LIMIT_WINDOW_MILLIS);
+        }
+
+        long[] stats = FALLBACK_RATE_CACHE.compute(clientIp, (ip, current) -> {
+            if (current == null || now - current[1] > RATE_LIMIT_WINDOW_MILLIS) {
+                return new long[]{1L, now};
+            }
+            current[0]++;
+            return current;
+        });
+
+        if (stats[0] > RATE_LIMIT_MAX_REQUESTS) {
+            log.warn("In-memory public lead submission rate limit exceeded for IP {}", clientIp);
+            throw new TooManyRequestsException("Too many submission attempts from your network. Please try again in 15 minutes.");
         }
     }
 }

@@ -59,6 +59,7 @@ public class SafeHttpClient {
     private static final int MAX_BODY_BYTES = 5 * 1024 * 1024; // 5 MB max response size
     private static final int MAX_HEADER_COUNT = 64;
     private static final int MAX_HEADER_TOTAL_BYTES = 16 * 1024; // 16 KB total headers
+    private static final int MAX_LINE_BYTES = 8192; // 8 KB max single header line
     private static final String USER_AGENT = "YemomBizGrow-SEO-Crawler/1.0 (+https://yemombizgrow.com/bot)";
 
     private final SsrfProtectionService ssrfProtection;
@@ -190,7 +191,8 @@ public class SafeHttpClient {
                 long totalBodyBytes = 0;
 
                 if (isChunked) {
-                    body = readChunkedBody(in, MAX_BODY_BYTES);
+                    Instant chunkedDeadline = startTime.plusSeconds(30);
+                    body = readChunkedBody(in, MAX_BODY_BYTES, chunkedDeadline);
                 } else {
                     // Read fixed-length or close-terminated body
                     long contentLength = -1;
@@ -199,7 +201,8 @@ public class SafeHttpClient {
                     } catch (NumberFormatException ignored) {
                         // No content-length; will read until connection close
                     }
-                    body = readBodyWithLimit(in, MAX_BODY_BYTES, contentLength);
+                    Instant bodyDeadline = startTime.plusSeconds(30);
+                    body = readBodyWithLimit(in, MAX_BODY_BYTES, contentLength, bodyDeadline);
                 }
 
                 // Body size check after reading
@@ -247,6 +250,9 @@ public class SafeHttpClient {
                 break;
             } else {
                 lineBuffer.write(b);
+                if (lineBuffer.size() > MAX_LINE_BYTES) {
+                    throw new IOException("Header line exceeds maximum allowed length of " + MAX_LINE_BYTES + " bytes");
+                }
             }
         }
         if (lineBuffer.size() == 0 && b == -1) return null;
@@ -258,6 +264,10 @@ public class SafeHttpClient {
         String line;
         int totalBytes = 0;
         while ((line = readLine(in)) != null && !line.isBlank()) {
+            if (headers.size() >= MAX_HEADER_COUNT) {
+                log.warn("Response header count exceeded limit of {}", MAX_HEADER_COUNT);
+                break;
+            }
             int colon = line.indexOf(':');
             if (colon > 0) {
                 String key = line.substring(0, colon).trim();
@@ -274,12 +284,16 @@ public class SafeHttpClient {
         return headers;
     }
 
-    private String readBodyWithLimit(InputStream in, int maxBytes, long contentLength) throws IOException {
+    private String readBodyWithLimit(InputStream in, int maxBytes, long contentLength, Instant deadline) throws IOException {
         ByteArrayOutputStream bodyOut = new ByteArrayOutputStream();
         byte[] buffer = new byte[8192];
         int totalRead = 0;
         int read;
         while ((read = in.read(buffer)) != -1) {
+            if (Instant.now().isAfter(deadline)) {
+                log.warn("Body read deadline exceeded");
+                throw new IOException("Request deadline exceeded while reading response body");
+            }
             totalRead += read;
             if (totalRead > maxBytes) {
                 log.warn("Response body exceeded limit of {} bytes", maxBytes);
@@ -290,12 +304,16 @@ public class SafeHttpClient {
         return bodyOut.toString(StandardCharsets.UTF_8);
     }
 
-    private String readChunkedBody(InputStream in, long maxBytes) throws IOException {
+    private String readChunkedBody(InputStream in, long maxBytes, Instant deadline) throws IOException {
         ByteArrayOutputStream bodyOut = new ByteArrayOutputStream();
         byte[] buffer = new byte[8192];
         long totalRead = 0;
 
         while (true) {
+            if (Instant.now().isAfter(deadline)) {
+                log.warn("Chunked body read deadline exceeded");
+                throw new IOException("Request deadline exceeded while reading chunked response body");
+            }
             // Read chunk size line
             String chunkSizeLine = readLine(in);
             if (chunkSizeLine == null) {

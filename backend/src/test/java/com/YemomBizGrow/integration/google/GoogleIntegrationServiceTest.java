@@ -299,4 +299,25 @@ class GoogleIntegrationServiceTest {
                 .isInstanceOf(BadRequestException.class)
                 .hasMessageContaining("replayed");
     }
+
+    @Test
+    void syncAnalyticsData_whenTokenExpiredAndRefreshFails_throwsBadRequestException() throws Exception {
+        when(websiteRepository.findByIdAndOrganizationId(websiteId, orgId)).thenReturn(Optional.of(website));
+
+        GoogleCredential cred = new GoogleCredential();
+        cred.setOrganizationId(orgId);
+        cred.setWebsiteId(websiteId);
+        cred.setAccessTokenEnc("enc-expired-token");
+        cred.setRefreshTokenEnc("enc-refresh-token");
+        cred.setTokenExpiry(Instant.now().minusSeconds(3600));
+        when(credentialRepository.findByOrganizationIdAndWebsiteId(orgId, websiteId)).thenReturn(Optional.of(cred));
+        when(encryptionService.decrypt("enc-expired-token")).thenReturn("expired-token");
+        when(encryptionService.decrypt("enc-refresh-token")).thenReturn("refresh-token");
+        when(oAuthClient.refreshAccessToken(eq("refresh-token"), any(), any()))
+                .thenThrow(new RuntimeException("invalid_grant"));
+
+        assertThatThrownBy(() -> service.syncAnalytics(actorId, orgId, websiteId))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("Google integration requires reconnection");
+    }
 }

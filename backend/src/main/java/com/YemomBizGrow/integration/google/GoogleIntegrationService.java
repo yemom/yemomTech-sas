@@ -311,7 +311,10 @@ public class GoogleIntegrationService {
                     credentialRepository.save(cred);
                 } catch (Exception e) {
                     log.error("Failed to refresh Google token for account {}", cred.getGoogleAccountId(), e);
+                    throw new BadRequestException("Google integration requires reconnection: access token expired and refresh failed. Please reconnect your Google account.");
                 }
+            } else {
+                throw new BadRequestException("Google integration requires reconnection: access token expired and no refresh token available. Please reconnect your Google account.");
             }
         }
         return accessToken;

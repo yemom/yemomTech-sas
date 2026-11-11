@@ -241,4 +241,38 @@ class LeadServiceTest {
                 .isInstanceOf(com.YemomBizGrow.common.exception.TooManyRequestsException.class)
                 .hasMessageContaining("Too many submission attempts");
     }
+
+    @Test
+    @DisplayName("capturePublicLead falls back to in-memory rate limiting when Redis is unavailable")
+    void capturePublicLead_fallbackToInMemoryRateLimit() {
+        Organization org = new Organization();
+        org.setId(UUID.randomUUID());
+        org.setName("Org");
+        org.setSlug("test-fallback-slug");
+        when(organizationRepository.findBySlug("test-fallback-slug")).thenReturn(Optional.of(org));
+        when(leadRepository.save(any(Lead.class))).thenAnswer(i -> {
+            Lead l = i.getArgument(0);
+            l.setId(UUID.randomUUID());
+            return l;
+        });
+
+        LeadService fallbackService = new LeadService(
+                leadRepository, activityRepository, organizationRepository, accessControlService, auditService, null
+        );
+
+        PublicLeadCaptureRequest request = new PublicLeadCaptureRequest(
+                "Abebe", "Kebede", "abebe@example.et", "+251911223344", null, "Hello", null
+        );
+
+        String testIp = "203.0.113.99";
+        // 10 successful requests allowed
+        for (int i = 0; i < 10; i++) {
+            fallbackService.capturePublicLead("test-fallback-slug", request, testIp);
+        }
+
+        // 11th request must be blocked by the in-memory fallback rate limiter
+        assertThatThrownBy(() -> fallbackService.capturePublicLead("test-fallback-slug", request, testIp))
+                .isInstanceOf(com.YemomBizGrow.common.exception.TooManyRequestsException.class)
+                .hasMessageContaining("Too many submission attempts");
+    }
 }

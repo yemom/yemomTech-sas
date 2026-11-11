@@ -202,4 +202,26 @@ class AiServiceTest {
         assertThat(resp.content()).contains("Welcome to Bole Trading!");
         verify(leadRepository).save(any(Lead.class)); // Auto-created lead from contact info
     }
+
+    @Test
+    void handlePublicChat_whenRateLimitExceeded_throwsBadRequest() {
+        ChatbotConfig config = new ChatbotConfig();
+        config.setOrganizationId(orgId);
+        config.setEnabled(true);
+
+        when(organizationRepository.findBySlug("bole-trading")).thenReturn(Optional.of(organization));
+        when(chatbotConfigRepository.findByOrganizationId(orgId)).thenReturn(Optional.of(config));
+        when(messageRepository.countByConversationSessionIdAndCreatedAfter(eq("sess-busy"), any()))
+                .thenReturn(5L);
+
+        PublicChatMessageRequest req = new PublicChatMessageRequest(
+                "sess-busy",
+                "Spamming messages",
+                null, null, null,
+                orgId);
+
+        assertThatThrownBy(() -> aiService.handlePublicChat("bole-trading", req))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("Rate limit exceeded");
+    }
 }

@@ -17,13 +17,12 @@ export default defineConfig({
     trace: "on-first-retry",
     screenshot: "only-on-failure",
     video: "retain-on-failure",
-    channel: "chrome", // Use actual installed Google Chrome instead of bundled Chromium
     timezoneId: "Africa/Addis_Ababa",
   },
   projects: [
     {
       name: "chrome",
-      use: { ...devices["Desktop Chrome"] },
+      use: { ...devices["Desktop Chrome"], channel: "chrome" },
     },
     // Keep chromium project for CI headless fallback
     {
