@@ -1,0 +1,17 @@
+[INFO] Scanning for projects...
+[INFO] 
+[INFO] --------------------< com.bizgrow:bizgrow-backend >---------------------
+[INFO] Building bizgrow-backend 0.1.0-SNAPSHOT
+[INFO]   from pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- clean:3.4.1:clean (default-clean) @ bizgrow-backend ---
+[INFO] Deleting D:\AAiT PROJECTS\new project\backend\target
+[INFO] 
+[INFO] --- resources:3.3.1:resources (default-resources) @ bizgrow-backend ---
+[INFO] Copying 3 resources from src\main\resources to target\classes
+[INFO] Copying 19 resources from src\main\resources to target\classes
+[INFO] 
+[INFO] --- compiler:3.14.1:compile (default-compile) @ bizgrow-backend ---
+[INFO] Recompiling the module because of changed source code.
+[INFO] Compiling 238 source files with javac [debug parameters release 21] to target\classes

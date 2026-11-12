@@ -6,7 +6,7 @@
 # =============================================================
 spring:
   datasource:
-    url: ${DATABASE_URL:jdbc:postgresql://127.0.0.1:5632/YemomBizGrow}
+    url: ${DATABASE_URL:jdbc:postgresql://127.0.0.1:5635/YemomBizGrow}
     username: ${DATABASE_USERNAME:YemomBizGrow_user}
     password: ${DATABASE_PASSWORD:YemomBizGrow_password}
   data:

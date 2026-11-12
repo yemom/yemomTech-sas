@@ -136,7 +136,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const response = await loadMe();
       chooseOrg(response.memberships, null);
       setStatus("authenticated");
-      router.replace("/onboarding");
+      console.log("Navigating to onboarding");
+      router.push("/onboarding");
     },
     [loadMe, chooseOrg, router],
   );

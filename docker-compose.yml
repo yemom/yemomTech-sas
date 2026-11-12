@@ -15,9 +15,9 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-YemomBizGrow}
       POSTGRES_USER: ${POSTGRES_USER:-YemomBizGrow_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-CHANGE_ME_strong_db_password}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-YemomBizGrow_password}
     ports:
-      - "5632:5432"
+      - "5635:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -55,7 +55,7 @@ services:
       SERVER_PORT: ${APP_PORT:-8080}
       DATABASE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-YemomBizGrow}
       DATABASE_USERNAME: ${POSTGRES_USER:-YemomBizGrow_user}
-      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-CHANGE_ME_strong_db_password}
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-YemomBizGrow_password}
       REDIS_HOST: redis
       REDIS_PORT: "6379"
       JWT_SECRET: ${JWT_SECRET:-dev_only_secret_not_for_production_use_0123456789abcdef}
