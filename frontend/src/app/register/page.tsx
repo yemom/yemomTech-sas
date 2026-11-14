@@ -21,9 +21,7 @@ export default function RegisterPage() {
     formState: { errors, isSubmitting },
   } = useForm<RegisterInput>({ resolver: zodResolver(registerSchema) });
 
-  // NOTE: no auto-redirect here — register() itself navigates to /onboarding
-  // on success. An authenticated user landing on this page is redirected by
-  // the login page's effect or can use the sign-in link below.
+  // NOTE: redirect to /onboarding handled by AuthProvider register() function
 
   const onSubmit = handleSubmit(async (values) => {
     setFormError(null);
@@ -36,7 +34,6 @@ export default function RegisterPage() {
         // The backend pattern rejects ""; omit the field when empty.
         ...(values.phoneNumber?.trim() ? { phoneNumber: values.phoneNumber.trim() } : {}),
       });
-      // AuthProvider redirects to /onboarding on success.
     } catch (error) {
       if (error instanceof ApiError && error.fieldErrors) {
         for (const [field, message] of Object.entries(error.fieldErrors)) {

@@ -87,7 +87,7 @@ export default function DashboardPage() {
         <Card className="p-5">
           <p className="text-sm text-slate-500">Your role</p>
           <p className="mt-1 text-3xl font-bold text-slate-900">
-            <Badge status="ACTIVE">{currentOrg?.role.replace("BUSINESS_", "")}</Badge>
+            <Badge status="ACTIVE">{dashboard.data.currentUserRole.replace("BUSINESS_", "")}</Badge>
           </p>
         </Card>
       </div>

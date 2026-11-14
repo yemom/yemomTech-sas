@@ -26,6 +26,7 @@ import com.YemomBizGrow.user.dto.UserResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -117,11 +118,19 @@ public class AuthService {
 
     /* ------------------------------- refresh -------------------------------- */
 
+    /**
+     * Rotation runs in one transaction so the successor insert and the old-token
+     * revocation are atomic. Security-state changes made before a rejection
+     * (refresh-token reuse detection / disabled account) must survive the
+     * exception: without {@code noRollbackFor} the family revocation would be
+     * rolled back and the already-rotated legitimate cookie would stay valid.
+     */
+    @Transactional(noRollbackFor = UnauthorizedException.class)
     public SessionResult refresh(String rawRefreshToken, String csrfHeader, String csrfCookie,
                                  String deviceInformation) {
         validateCsrf(csrfHeader, csrfCookie);
 
-        RefreshToken token = refreshTokens.findByRawToken(rawRefreshToken)
+        RefreshToken token = refreshTokens.findByRawTokenForUpdate(rawRefreshToken)
                 .orElseThrow(() -> new UnauthorizedException("Invalid session. Please sign in again."));
 
         if (token.isRevoked()) {

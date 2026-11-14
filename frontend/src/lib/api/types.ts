@@ -83,6 +83,7 @@ export interface OnboardingProgress {
 
 export interface Dashboard {
   organization: Organization;
+  currentUserRole: MembershipRole;
   recentWebsites: Website[];
   onboarding: OnboardingProgress;
 }

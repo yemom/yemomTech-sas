@@ -6,7 +6,7 @@ import { expect, test } from "@playwright/test";
  * members → logout → login again.
  *
  * Requirements (see playwright.config.ts):
- * - backend on http://localhost:8082 (dev profile, expose-dev-token on)
+ * - backend on http://localhost:8080 (dev profile, expose-dev-token on)
  * - frontend dev server on http://localhost:3001
  *
  * Label selectors use non-exact matching because required fields render
@@ -89,6 +89,11 @@ test("owner runs the full vertical slice", async ({ page }) => {
 
   // The `next` param returns the user to the workspace.
   await expect(page).toHaveURL(/\/workspace/);
+  await expect(page.getByRole("heading", { name: "E2E Test Trading PLC" })).toBeVisible();
+
+  // A browser reload restores authentication from the HttpOnly refresh cookie.
+  await page.reload();
+  await expect(page).toHaveURL(/\/workspace$/);
   await expect(page.getByRole("heading", { name: "E2E Test Trading PLC" })).toBeVisible();
 });
 

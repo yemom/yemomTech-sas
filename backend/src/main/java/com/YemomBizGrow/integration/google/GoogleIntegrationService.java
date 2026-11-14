@@ -99,7 +99,9 @@ public class GoogleIntegrationService {
         accessControlService.requirePermission(actorUserId, organizationId, Permission.WEBSITE_MANAGE);
         requireWebsite(organizationId, websiteId);
 
-        String state = UUID.randomUUID().toString();
+        if (googleProps.getClientId().isBlank() || googleProps.getClientSecret().isBlank()) {
+            throw new BadRequestException("Google integration credentials (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET) are missing");
+        }
 
         GoogleCredential credential = credentialRepository.findByOrganizationIdAndWebsiteId(organizationId, websiteId)
                 .orElseGet(() -> {
@@ -111,27 +113,21 @@ public class GoogleIntegrationService {
                     return c;
                 });
 
-        if (googleProps.getClientId().isBlank() || googleProps.getClientSecret().isBlank()) {
-            throw new BadRequestException("Google integration credentials (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET) are missing");
-        }
+        String state = UUID.randomUUID().toString();
+
+        // PKCE codes for enhanced OAuth security; the challenge rides on the
+        // authorization URL, the verifier is stored encrypted for the callback.
+        String[] pkceCodes = oAuthClient.buildAuthorizationUrl(
+                googleProps.getClientId(), googleProps.getRedirectUri(), state, DEFAULT_SCOPES);
+        String authUrl = pkceCodes[0];
+        String codeVerifier = pkceCodes[1];
 
         credential.setOauthState(state);
         credential.setOauthStateExpiresAt(Instant.now().plus(Duration.ofMinutes(15)));
         credential.setInitiatingUserId(actorUserId);
+        credential.setCodeVerifier(encryptionService.encrypt(codeVerifier));
         credential.setUpdatedAt(Instant.now());
         credentialRepository.save(credential);
-
-        String clientId = googleProps.getClientId();
-        String redirectUri = googleProps.getRedirectUri();
-
-        // Generate PKCE codes for enhanced OAuth security
-        String[] pkceCodes = oAuthClient.buildAuthorizationUrl(clientId, redirectUri);
-        String authUrl = pkceCodes[0];
-        String codeVerifier = pkceCodes[1];
-
-        // Store the code verifier in the credential so it can be retrieved during callback exchange
-        credential.setCodeVerifier(codeVerifier);
-        credential.setOauthState(state);
 
         return new GoogleConnectUrlResponse(authUrl, state);
     }
@@ -158,6 +154,7 @@ public class GoogleIntegrationService {
             throw new BadRequestException("Invalid, expired, or replayed OAuth state parameter");
         }
 
+        String storedVerifier = encryptionService.decrypt(credential.getCodeVerifier());
         GoogleOAuthClient.TokenResponse tokens;
         GoogleOAuthClient.UserInfoResponse userInfo;
         try {
@@ -166,7 +163,7 @@ public class GoogleIntegrationService {
                     googleProps.getClientId(),
                     googleProps.getClientSecret(),
                     googleProps.getRedirectUri(),
-                    credential.getCodeVerifier()
+                    storedVerifier
             );
             userInfo = oAuthClient.fetchUserInfo(tokens.accessToken());
         } catch (Exception e) {
@@ -187,6 +184,8 @@ public class GoogleIntegrationService {
         credential.setScopes(tokens.scope() != null && !tokens.scope().isBlank() ? tokens.scope() : DEFAULT_SCOPES);
         credential.setOauthState(null); // Clear state after use
         credential.setOauthStateExpiresAt(null);
+        // Single-use PKCE verifier: never retain it past the exchange.
+        credential.setCodeVerifier(null);
         credential.setUpdatedAt(Instant.now());
         credentialRepository.save(credential);
 

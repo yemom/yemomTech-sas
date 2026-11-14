@@ -12,5 +12,5 @@ public interface ChatbotMessageRepository extends JpaRepository<ChatbotMessage, 
 
     List<ChatbotMessage> findTop10ByConversationIdOrderByCreatedAtDesc(UUID conversationId);
 
-    long countByConversationIdAndCreatedAfter(UUID conversationId, Instant createdAfter);
+    long countByConversationIdAndCreatedAtAfter(UUID conversationId, Instant createdAfter);
 }

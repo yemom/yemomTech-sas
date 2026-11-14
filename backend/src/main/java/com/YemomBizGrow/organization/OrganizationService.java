@@ -104,7 +104,8 @@ public class OrganizationService {
     }
 
     public DashboardResponse dashboard(UUID actorId, UUID organizationId) {
-        accessControl.requirePermission(actorId, organizationId, com.YemomBizGrow.membership.Permission.ORG_VIEW);
+        MembershipRole currentUserRole = accessControl.requirePermission(
+                actorId, organizationId, com.YemomBizGrow.membership.Permission.ORG_VIEW).getRole();
         Organization organization = organizationRead(organizationId);
 
         long memberCount = membershipService.countActiveMembers(organizationId);
@@ -113,6 +114,7 @@ public class OrganizationService {
 
         return new DashboardResponse(
                 OrganizationResponse.of(organization, memberCount, websiteCount),
+                currentUserRole,
                 recent,
                 new DashboardResponse.OnboardingProgress(
                         websiteCount > 0,

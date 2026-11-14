@@ -16,7 +16,7 @@
 import type { AuthSession, ErrorBody } from "./types";
 
 const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8082/api/v1";
+  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api/v1";
 
 const CSRF_STORAGE_KEY = "YemomBizGrow_csrf";
 
@@ -82,6 +82,16 @@ export function getAccessToken(): string | null {
 
 export function getCsrfToken(): string | null {
   hydrate();
+  // Another tab may have rotated the session while this tab waited for the
+  // cross-tab Web Lock. Read the shared token at the point of use.
+  if (typeof window !== "undefined") {
+    try {
+      const latest = window.localStorage.getItem(CSRF_STORAGE_KEY);
+      if (latest) csrfToken = latest;
+    } catch {
+      /* use in-memory value when storage is unavailable */
+    }
+  }
   return csrfToken ?? readCookie("YemomBizGrow_csrf");
 }
 

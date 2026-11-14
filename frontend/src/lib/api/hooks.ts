@@ -148,7 +148,7 @@ export function useDashboard(orgId: string | null) {
 export function useCreateOrganization() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (body: { name: string; industry?: string; websiteUrl?: string }) =>
+    mutationFn: (body: { name: string; industry?: string; description?: string; websiteUrl?: string }) =>
       api.post<Organization>("/organizations", body),
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: queryKeys.organizations });

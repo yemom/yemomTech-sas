@@ -13,6 +13,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.security.SecureRandom;
 import java.util.Base64;
 import java.security.MessageDigest;
 import java.time.Duration;
@@ -105,11 +106,13 @@ public class GoogleOAuthClient {
         }
     }
 
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
+
     private static String generateRandomString(int length) {
         String chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~";
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < length; i++) {
-            sb.append(chars.charAt((int) (Math.random() * chars.length())));
+            sb.append(chars.charAt(SECURE_RANDOM.nextInt(chars.length())));
         }
         return sb.toString();
     }
@@ -131,11 +134,11 @@ public class GoogleOAuthClient {
         params.put("client_secret", clientSecret);
         params.put("redirect_uri", redirectUri);
         params.put("grant_type", "authorization_code");
+        // PKCE: only the verifier belongs on the token endpoint. The challenge
+        // was already sent on the authorization request; sending it here is not
+        // part of RFC 7636 / Google's token contract and can be rejected.
         if (codeVerifier != null && !codeVerifier.isBlank()) {
             params.put("code_verifier", codeVerifier);
-            params.put("code_challenge_method", CODE_CHALLENGE_METHOD);
-            String codeChallenge = codeVerifierToCodeChallenge(codeVerifier);
-            params.put("code_challenge", codeChallenge);
         }
 
         String formBody = buildFormData(params);
@@ -461,12 +464,19 @@ public class GoogleOAuthClient {
      * Builds the Google OAuth authorization URL with PKCE (Proof Key for Code Exchange).
      * Including PKCE is required by Google's OAuth 2.0 flow for enhanced security.
      *
-     * @param clientId the Google OAuth client ID
-     * @param redirectUri the redirect URI registered with Google
+     * <p>The {@code state} parameter must be included: it is stored server-side and
+     * validated atomically on callback, which is what makes the callback resistant
+     * to login-CSRF / code-injection. {@code access_type=offline} + {@code prompt=consent}
+     * are required for Google to issue a refresh token the integration can renew.</p>
+     *
+     * @param clientId     the Google OAuth client ID
+     * @param redirectUri  the redirect URI registered with Google
+     * @param state        opaque, single-use value echoed back by Google
+     * @param scopes       space-delimited OAuth scopes (URL-encoded here)
      * @return a pair of (authorizationUrl, codeVerifier) - the verifier must be stored and
      *         passed when exchanging the authorization code for tokens
      */
-    public String[] buildAuthorizationUrl(String clientId, String redirectUri) {
+    public String[] buildAuthorizationUrl(String clientId, String redirectUri, String state, String scopes) {
         // Generate PKCE codes
         String[] pkceCodes = generatePkceCodes();
         String codeVerifier = pkceCodes[0];
@@ -474,11 +484,14 @@ public class GoogleOAuthClient {
 
         // Build the authorization URL with PKCE parameters
         String authUrl = "https://accounts.google.com/o/oauth2/v2/auth?" +
-                "client_id=" + clientId +
-                "&redirect_uri=" + redirectUri +
+                "client_id=" + URLEncoder.encode(clientId, StandardCharsets.UTF_8) +
+                "&redirect_uri=" + URLEncoder.encode(redirectUri, StandardCharsets.UTF_8) +
                 "&response_type=code" +
-                "&scope=openid%20email%20profile" +
-                "&code_challenge=" + codeChallenge +
+                "&scope=" + URLEncoder.encode(scopes, StandardCharsets.UTF_8) +
+                "&state=" + URLEncoder.encode(state == null ? "" : state, StandardCharsets.UTF_8) +
+                "&access_type=offline" +
+                "&prompt=consent" +
+                "&code_challenge=" + URLEncoder.encode(codeChallenge, StandardCharsets.UTF_8) +
                 "&code_challenge_method=" + CODE_CHALLENGE_METHOD;
 
         return new String[]{authUrl, codeVerifier};

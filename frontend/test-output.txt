@@ -1,0 +1,151 @@
+
+Running 8 tests using 1 worker
+
+  x  1 [chrome] › e2e\vertical-slice.spec.ts:18:1 › owner runs the full vertical slice (6.1s)
+  x  2 [chrome] › e2e\vertical-slice.spec.ts:100:1 › wrong password shows a generic error and reveals nothing (6.0s)
+  ok 3 [chrome] › e2e\vertical-slice.spec.ts:111:1 › registration enforces the password policy client-side (1.0s)
+  ok 4 [chrome] › e2e\vertical-slice.spec.ts:126:1 › an unauthenticated visitor is redirected from protected pages (748ms)
+  x  5 [chromium] › e2e\vertical-slice.spec.ts:18:1 › owner runs the full vertical slice (7.0s)
+  x  6 [chromium] › e2e\vertical-slice.spec.ts:100:1 › wrong password shows a generic error and reveals nothing (6.2s)
+  ok 7 [chromium] › e2e\vertical-slice.spec.ts:111:1 › registration enforces the password policy client-side (816ms)
+  ok 8 [chromium] › e2e\vertical-slice.spec.ts:126:1 › an unauthenticated visitor is redirected from protected pages (323ms)
+
+
+  1) [chrome] › e2e\vertical-slice.spec.ts:18:1 › owner runs the full vertical slice ───────────────
+
+    Error: expect(page).toHaveURL(expected) failed
+
+    Expected pattern: /\/onboarding$/
+    Received string:  "http://localhost:3001/register"
+    Timeout: 5000ms
+
+    Call log:
+      - Expect "toHaveURL" with timeout 5000ms
+        14 × locator resolved to <html lang="en" data-scroll-behavior="smooth">…</html>
+           - unexpected value "http://localhost:3001/register"
+
+
+      29 |
+      30 |   // New accounts land on workspace creation.
+    > 31 |   await expect(page).toHaveURL(/\/onboarding$/);
+         |                      ^
+      32 |   await expect(page.getByRole("heading", { name: "Create your workspace" })).toBeVisible();
+      33 |
+      34 |   // ---- create workspace --------------------------------------------------
+        at D:\AAiT PROJECTS\new project\frontend\e2e\vertical-slice.spec.ts:31:22
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\vertical-slice-owner-runs-the-full-vertical-slice-chrome\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\vertical-slice-owner-runs-the-full-vertical-slice-chrome\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\vertical-slice-owner-runs-the-full-vertical-slice-chrome\error-context.md
+
+  2) [chrome] › e2e\vertical-slice.spec.ts:100:1 › wrong password shows a generic error and reveals nothing 
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByText('Incorrect email or password.')
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" getByText('Incorrect email or password.') with timeout 5000ms
+      - waiting for getByText('Incorrect email or password.')
+
+
+      105 |
+      106 |   // Same generic message the backend returns — no user enumeration.
+    > 107 |   await expect(page.getByText("Incorrect email or password.")).toBeVisible();
+          |                                                                ^
+      108 |   await expect(page).toHaveURL(/\/login/);
+      109 | });
+      110 |
+        at D:\AAiT PROJECTS\new project\frontend\e2e\vertical-slice.spec.ts:107:64
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\vertical-slice-wrong-passw-d3baf-c-error-and-reveals-nothing-chrome\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\vertical-slice-wrong-passw-d3baf-c-error-and-reveals-nothing-chrome\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\vertical-slice-wrong-passw-d3baf-c-error-and-reveals-nothing-chrome\error-context.md
+
+  3) [chromium] › e2e\vertical-slice.spec.ts:18:1 › owner runs the full vertical slice ─────────────
+
+    Error: expect(page).toHaveURL(expected) failed
+
+    Expected pattern: /\/onboarding$/
+    Received string:  "http://localhost:3001/register"
+    Timeout: 5000ms
+
+    Call log:
+      - Expect "toHaveURL" with timeout 5000ms
+        14 × locator resolved to <html lang="en" data-scroll-behavior="smooth">…</html>
+           - unexpected value "http://localhost:3001/register"
+
+
+      29 |
+      30 |   // New accounts land on workspace creation.
+    > 31 |   await expect(page).toHaveURL(/\/onboarding$/);
+         |                      ^
+      32 |   await expect(page.getByRole("heading", { name: "Create your workspace" })).toBeVisible();
+      33 |
+      34 |   // ---- create workspace --------------------------------------------------
+        at D:\AAiT PROJECTS\new project\frontend\e2e\vertical-slice.spec.ts:31:22
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\vertical-slice-owner-runs-the-full-vertical-slice-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\vertical-slice-owner-runs-the-full-vertical-slice-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\vertical-slice-owner-runs-the-full-vertical-slice-chromium\error-context.md
+
+  4) [chromium] › e2e\vertical-slice.spec.ts:100:1 › wrong password shows a generic error and reveals nothing 
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByText('Incorrect email or password.')
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" getByText('Incorrect email or password.') with timeout 5000ms
+      - waiting for getByText('Incorrect email or password.')
+
+
+      105 |
+      106 |   // Same generic message the backend returns — no user enumeration.
+    > 107 |   await expect(page.getByText("Incorrect email or password.")).toBeVisible();
+          |                                                                ^
+      108 |   await expect(page).toHaveURL(/\/login/);
+      109 | });
+      110 |
+        at D:\AAiT PROJECTS\new project\frontend\e2e\vertical-slice.spec.ts:107:64
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\vertical-slice-wrong-passw-d3baf-c-error-and-reveals-nothing-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\vertical-slice-wrong-passw-d3baf-c-error-and-reveals-nothing-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\vertical-slice-wrong-passw-d3baf-c-error-and-reveals-nothing-chromium\error-context.md
+
+  4 failed
+    [chrome] › e2e\vertical-slice.spec.ts:18:1 › owner runs the full vertical slice ────────────────
+    [chrome] › e2e\vertical-slice.spec.ts:100:1 › wrong password shows a generic error and reveals nothing 
+    [chromium] › e2e\vertical-slice.spec.ts:18:1 › owner runs the full vertical slice ──────────────
+    [chromium] › e2e\vertical-slice.spec.ts:100:1 › wrong password shows a generic error and reveals nothing 
+  4 passed (36.4s)

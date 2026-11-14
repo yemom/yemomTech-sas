@@ -2,7 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 
 /**
  * E2E runs against the dev server on 3001; the backend must be running on
- * 8082 with the `dev` profile (expose-dev-token enabled) and CORS allowing
+ * 8080 with the `dev` profile (expose-dev-token enabled) and CORS allowing
  * http://localhost:3001.
  */
 export default defineConfig({

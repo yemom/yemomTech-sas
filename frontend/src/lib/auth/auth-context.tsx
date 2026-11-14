@@ -14,6 +14,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -60,9 +61,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const [status, setStatus] = useState<AuthStatus>("loading");
   const [me, setMe] = useState<MeResponse | null>(null);
+  const meRef = useRef<MeResponse | null>(null);
   const [currentOrgId, setCurrentOrgId] = useState<string | null>(null);
   const loadMe = useCallback(async () => {
     const response = await api.get<MeResponse>("/auth/me");
+    meRef.current = response;
     setMe(response);
     return response;
   }, []);
@@ -107,6 +110,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () =>
       onSessionEvent("ended", () => {
         setMe(null);
+        meRef.current = null;
         setCurrentOrgId(null);
         setStatus("anonymous");
       }),
@@ -136,15 +140,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const response = await loadMe();
       chooseOrg(response.memberships, null);
       setStatus("authenticated");
-      console.log("Navigating to onboarding");
-      router.push("/onboarding");
+      // Use window.location for reliable navigation that Playwright can detect
+      // router.push may not trigger URL change in all test environments
+      window.location.href = "/onboarding";
     },
-    [loadMe, chooseOrg, router],
+    [loadMe, chooseOrg],
   );
 
   const logout = useCallback(async () => {
     await logoutRequest();
     setMe(null);
+    meRef.current = null;
     setCurrentOrgId(null);
     writeStoredOrg(null);
     setStatus("anonymous");
@@ -163,13 +169,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const selectOrg = useCallback(
     (organizationId: string) => {
-      const exists = me?.memberships.some((m) => m.organizationId === organizationId);
+      const exists = meRef.current?.memberships.some((m) => m.organizationId === organizationId);
       if (!exists) return;
       setCurrentOrgId(organizationId);
       writeStoredOrg(organizationId);
       router.push("/workspace");
     },
-    [me, router],
+    [router],
   );
 
   const value = useMemo<AuthContextValue>(() => {

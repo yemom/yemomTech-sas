@@ -29,6 +29,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -117,13 +118,15 @@ class GoogleIntegrationServiceTest {
         assertThat(status.googleAccountId()).isEqualTo("account@example.com");
     }
 
-    @Test
+    static final String DEFAULT_SCOPES = "openid email https://www.googleapis.com/auth/analytics.readonly https://www.googleapis.com/auth/webmasters.readonly";
+
+@Test
     void generateConnectUrl_savesStateAndReturnsAuthUrl() {
         when(websiteRepository.findByIdAndOrganizationId(websiteId, orgId)).thenReturn(Optional.of(website));
         when(credentialRepository.findByOrganizationIdAndWebsiteId(orgId, websiteId)).thenReturn(Optional.empty());
         when(encryptionService.encrypt(any())).thenReturn("encrypted_dummy");
-        when(oAuthClient.buildAuthorizationUrl(eq("test-client-id"), eq("http://localhost:3000/callback")))
-                .thenReturn(new String[]{"https://accounts.google.com/o/oauth2/v2/auth?client_id=test-client-id&redirect_uri=http%3A%2F%2Flocalhost%3A3000%2Fcallback&state=test-state", "test-code-verifier"});
+        when(oAuthClient.buildAuthorizationUrl(eq("test-client-id"), eq("http://localhost:3000/callback"), anyString(), eq(DEFAULT_SCOPES)))
+                .thenReturn(new String[]{"https://accounts.google.com/o/oauth2/v2/auth?client_id=test-client-id&redirect_uri=http%3A%2F%2Flocalhost%3A3000%2Fcallback&state=test-state&access_type=offline&prompt=consent&scope=openid%20email%20https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fanalytics.readonly%20https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fwebmasters.readonly&code_challenge=test-challenge&code_challenge_method=S256", "test-code-verifier"});
 
         GoogleConnectUrlResponse response = service.generateConnectUrl(actorId, orgId, websiteId);
 
@@ -146,6 +149,7 @@ class GoogleIntegrationServiceTest {
         cred.setCodeVerifier("test-code-verifier");
         when(credentialRepository.findByOrganizationIdAndWebsiteId(orgId, websiteId)).thenReturn(Optional.of(cred));
         when(encryptionService.encrypt(any())).thenReturn("encrypted_token");
+        when(encryptionService.decrypt("test-code-verifier")).thenReturn("test-code-verifier");
 
         when(oAuthClient.exchangeAuthorizationCode(eq("test-auth-code"), eq("test-client-id"), eq("test-secret"), eq("http://localhost:3000/callback"), eq("test-code-verifier")))
                 .thenReturn(new GoogleOAuthClient.TokenResponse("real_access_token", "real_refresh_token", 3600L, "openid email"));

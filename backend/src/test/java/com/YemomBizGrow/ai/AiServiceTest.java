@@ -163,7 +163,11 @@ class AiServiceTest {
         when(organizationRepository.findBySlug("bole-trading")).thenReturn(Optional.of(organization));
         when(chatbotConfigRepository.findByOrganizationId(orgId)).thenReturn(Optional.of(config));
 
-        PublicChatMessageRequest req = new PublicChatMessageRequest("sess-1", "Hello", null, null, null, orgId);
+        UUID sessionId = UUID.randomUUID();
+        PublicChatMessageRequest req = new PublicChatMessageRequest(
+                sessionId,
+                "Hello",
+                null, null, null, orgId);
 
         assertThatThrownBy(() -> aiService.handlePublicChat("bole-trading", req))
                 .isInstanceOf(BadRequestException.class)
@@ -176,20 +180,21 @@ class AiServiceTest {
         config.setOrganizationId(orgId);
         config.setEnabled(true);
 
+        UUID sessionId = UUID.randomUUID();
         ChatbotConversation conv = new ChatbotConversation();
         conv.setId(UUID.randomUUID());
         conv.setOrganizationId(orgId);
-        conv.setSessionId("sess-100");
+        conv.setSessionId(sessionId.toString());
 
         when(organizationRepository.findBySlug("bole-trading")).thenReturn(Optional.of(organization));
         when(chatbotConfigRepository.findByOrganizationId(orgId)).thenReturn(Optional.of(config));
-        when(conversationRepository.findByOrganizationIdAndSessionId(orgId, "sess-100")).thenReturn(Optional.of(conv));
+        when(conversationRepository.findByOrganizationIdAndSessionId(orgId, sessionId.toString())).thenReturn(Optional.of(conv));
         when(conversationRepository.save(any(ChatbotConversation.class))).thenAnswer(i -> i.getArgument(0));
         when(messageRepository.save(any(ChatbotMessage.class))).thenAnswer(i -> i.getArgument(0));
         when(aiProvider.generateChatReply(any(), any(), any(), any(), any())).thenReturn("Welcome to Bole Trading! How can I help?");
 
         PublicChatMessageRequest req = new PublicChatMessageRequest(
-                "sess-100",
+                sessionId,
                 "Tell me about your services",
                 "Abebe Kebede",
                 "abebe@example.com",
@@ -211,11 +216,12 @@ class AiServiceTest {
 
         when(organizationRepository.findBySlug("bole-trading")).thenReturn(Optional.of(organization));
         when(chatbotConfigRepository.findByOrganizationId(orgId)).thenReturn(Optional.of(config));
-        when(messageRepository.countByConversationSessionIdAndCreatedAfter(eq("sess-busy"), any()))
+        UUID busySessionId = UUID.randomUUID();
+        when(messageRepository.countByConversationIdAndCreatedAtAfter(eq(busySessionId), any()))
                 .thenReturn(5L);
 
         PublicChatMessageRequest req = new PublicChatMessageRequest(
-                "sess-busy",
+                busySessionId,
                 "Spamming messages",
                 null, null, null,
                 orgId);

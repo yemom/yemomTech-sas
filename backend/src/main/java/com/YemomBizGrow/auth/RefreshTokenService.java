@@ -83,6 +83,14 @@ public class RefreshTokenService {
         return repository.findByTokenHash(TokenHasher.sha256Hex(rawToken));
     }
 
+    /** Must be called inside the refresh transaction to serialize concurrent rotations. */
+    public Optional<RefreshToken> findByRawTokenForUpdate(String rawToken) {
+        if (rawToken == null || rawToken.isBlank()) {
+            return Optional.empty();
+        }
+        return repository.findByTokenHashForUpdate(TokenHasher.sha256Hex(rawToken));
+    }
+
     public long refreshTtlDays() {
         return properties.getSecurity().getJwt().getRefreshExpirationDays();
     }

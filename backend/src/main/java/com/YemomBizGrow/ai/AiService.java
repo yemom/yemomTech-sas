@@ -196,7 +196,7 @@ public class AiService {
         // --- Rate limiting: max 5 messages per minute per session ---
         // TODO: Integrate with Spring RateLimiter or Redis-based rate limiter
         // For now, basic guard: check recent message count
-        long recentCount = messageRepository.countByConversationIdAndCreatedAfter(
+        long recentCount = messageRepository.countByConversationIdAndCreatedAtAfter(
                 request.sessionId(), Instant.now().minusSeconds(60)
         );
         if (recentCount >= 5) {
@@ -205,11 +205,11 @@ public class AiService {
 
         // Find or create conversation
         ChatbotConversation conversation = conversationRepository
-                .findByOrganizationIdAndSessionId(organization.getId(), request.sessionId())
+                .findByOrganizationIdAndSessionId(organization.getId(), request.sessionId().toString())
                 .orElseGet(() -> {
                     ChatbotConversation conv = new ChatbotConversation();
                     conv.setOrganizationId(organization.getId());
-                    conv.setSessionId(request.sessionId());
+                    conv.setSessionId(request.sessionId().toString());
                     return conv;
                 });
 

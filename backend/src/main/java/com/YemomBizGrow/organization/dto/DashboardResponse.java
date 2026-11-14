@@ -1,6 +1,7 @@
 package com.YemomBizGrow.organization.dto;
 
 import com.YemomBizGrow.website.dto.WebsiteResponse;
+import com.YemomBizGrow.membership.MembershipRole;
 
 import java.util.List;
 
@@ -19,6 +20,7 @@ import java.util.List;
  */
 public record DashboardResponse(
         OrganizationResponse organization,
+        MembershipRole currentUserRole,
         List<WebsiteResponse> recentWebsites,
         OnboardingProgress onboarding) {
 

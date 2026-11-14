@@ -1,5 +1,6 @@
 package com.YemomBizGrow;
 
+import com.YemomBizGrow.user.UserRepository;
 import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.MethodOrderer;
@@ -7,8 +8,11 @@ import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
 import org.springframework.http.ResponseEntity;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.util.Map;
+import java.util.Locale;
 import java.util.UUID;
 
 /**
@@ -22,6 +26,12 @@ import java.util.UUID;
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class VerticalSliceIT extends AbstractIntegrationTest {
 
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private PasswordEncoder passwordEncoder;
+
     private static final String PASSWORD = "Habesha#2026";
 
     private static String email;
@@ -34,7 +44,7 @@ class VerticalSliceIT extends AbstractIntegrationTest {
     @DisplayName("register creates an account, establishes a session and exposes /me")
     void registerAndMe() {
         email = uniqueEmail();
-        session = register(email, PASSWORD);
+        session = register(email.toUpperCase(Locale.ROOT), PASSWORD);
 
         Assertions.assertThat(session.accessToken()).isNotBlank();
         Assertions.assertThat(session.refreshCookie()).isNotBlank();
@@ -48,6 +58,10 @@ class VerticalSliceIT extends AbstractIntegrationTest {
         Assertions.assertThat(jsonStr(me.getBody(), "$.user.email")).isEqualTo(email);
         java.util.List<?> memberships = jsonPath(me.getBody(), "$.memberships");
         Assertions.assertThat(memberships).isEmpty();
+
+        var persisted = userRepository.findByEmail(email).orElseThrow();
+        Assertions.assertThat(persisted.getPasswordHash()).isNotEqualTo(PASSWORD);
+        Assertions.assertThat(passwordEncoder.matches(PASSWORD, persisted.getPasswordHash())).isTrue();
     }
 
     @Test
@@ -71,6 +85,9 @@ class VerticalSliceIT extends AbstractIntegrationTest {
         Assertions.assertThat(jsonStr(body, "$.slug")).isEqualTo("habesha-foods-plc");
         Assertions.assertThat(jsonStr(body, "$.status")).isEqualTo("ACTIVE");
         Assertions.assertThat(jsonInt(body, "$.memberCount")).isEqualTo(1);
+        ResponseEntity<String> me = get("/api/v1/auth/me", bearerHeaders(session));
+        assertStatus(me, 200, "me after organization creation");
+        Assertions.assertThat(jsonStr(me.getBody(), "$.memberships[0].role")).isEqualTo("BUSINESS_OWNER");
 
         ResponseEntity<String> mine = get("/api/v1/organizations", bearerHeaders(session));
         assertStatus(mine, 200, "list organizations");
@@ -128,6 +145,12 @@ class VerticalSliceIT extends AbstractIntegrationTest {
 
         assertStatus(response, 200, "dashboard");
         Assertions.assertThat(jsonStr(response.getBody(), "$.organization.id")).isEqualTo(organizationId);
+        Assertions.assertThat(jsonStr(response.getBody(), "$.currentUserRole")).isEqualTo("BUSINESS_OWNER");
+        Assertions.assertThat(jsonInt(response.getBody(), "$.organization.memberCount")).isEqualTo(1);
+        Assertions.assertThat(jsonInt(response.getBody(), "$.organization.websiteCount")).isEqualTo(1);
+        Assertions.assertThat(jsonStr(response.getBody(), "$.recentWebsites[0].id")).isEqualTo(websiteId);
+        Boolean websiteRegistered = jsonPath(response.getBody(), "$.onboarding.websiteRegistered");
+        Assertions.assertThat(websiteRegistered.booleanValue()).isTrue();
     }
 
     @Test
@@ -205,7 +228,7 @@ class VerticalSliceIT extends AbstractIntegrationTest {
         ResponseEntity<String> response = post("/api/v1/auth/register", Map.of(
                 "firstName", "Abebe",
                 "lastName", "Kebede",
-                "email", taken,
+                "email", taken.toUpperCase(Locale.ROOT),
                 "password", PASSWORD), jsonHeaders());
 
         assertErrorEnvelope(response, 409, "duplicate registration");

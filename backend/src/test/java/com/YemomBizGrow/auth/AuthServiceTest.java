@@ -145,13 +145,13 @@ class AuthServiceTest {
         assertThatThrownBy(() -> authService.refresh("raw", "raw", " ", "device"))
                 .isInstanceOf(ForbiddenException.class);
 
-        verify(refreshTokens, never()).findByRawToken(anyString());
+        verify(refreshTokens, never()).findByRawTokenForUpdate(anyString());
     }
 
     @Test
     @DisplayName("an unknown refresh cookie ends the session without details")
     void unknownRefreshTokenIsRejected() {
-        when(refreshTokens.findByRawToken("raw")).thenReturn(Optional.empty());
+        when(refreshTokens.findByRawTokenForUpdate("raw")).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> authService.refresh("raw", "raw", "raw", "device"))
                 .isInstanceOf(UnauthorizedException.class)
@@ -163,7 +163,7 @@ class AuthServiceTest {
     void reuseDetectionRevokesFamily() {
         RefreshToken revoked = token();
         revoked.setRevokedAt(Instant.now());
-        when(refreshTokens.findByRawToken("raw")).thenReturn(Optional.of(revoked));
+        when(refreshTokens.findByRawTokenForUpdate("raw")).thenReturn(Optional.of(revoked));
 
         assertThatThrownBy(() -> authService.refresh("raw", "raw", "raw", "device"))
                 .isInstanceOf(UnauthorizedException.class)
@@ -177,7 +177,7 @@ class AuthServiceTest {
     void expiredTokenRejected() {
         RefreshToken expired = token();
         expired.setExpiresAt(Instant.now().minusSeconds(60));
-        when(refreshTokens.findByRawToken("raw")).thenReturn(Optional.of(expired));
+        when(refreshTokens.findByRawTokenForUpdate("raw")).thenReturn(Optional.of(expired));
 
         assertThatThrownBy(() -> authService.refresh("raw", "raw", "raw", "device"))
                 .isInstanceOf(UnauthorizedException.class)
@@ -190,7 +190,7 @@ class AuthServiceTest {
     @DisplayName("an active token rotates and returns a brand-new access token and CSRF pair")
     void activeTokenRotates() {
         RefreshToken current = token();
-        when(refreshTokens.findByRawToken("raw")).thenReturn(Optional.of(current));
+        when(refreshTokens.findByRawTokenForUpdate("raw")).thenReturn(Optional.of(current));
         User active = user(UserStatus.ACTIVE);
         when(userService.getById(current.getUserId())).thenReturn(active);
         when(refreshTokens.rotate(eq(current), eq("device")))
@@ -211,7 +211,7 @@ class AuthServiceTest {
     @DisplayName("a disabled user's session family is revoked on refresh")
     void disabledUserFamilyRevoked() {
         RefreshToken current = token();
-        when(refreshTokens.findByRawToken("raw")).thenReturn(Optional.of(current));
+        when(refreshTokens.findByRawTokenForUpdate("raw")).thenReturn(Optional.of(current));
         when(userService.getById(current.getUserId())).thenReturn(user(UserStatus.SUSPENDED));
 
         assertThatThrownBy(() -> authService.refresh("raw", "raw", "raw", "device"))

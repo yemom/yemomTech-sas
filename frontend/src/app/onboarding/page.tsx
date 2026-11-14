@@ -39,6 +39,7 @@ export default function OnboardingPage() {
       const org = await createOrg.mutateAsync({
         name: values.name.trim(),
         ...(values.industry?.trim() ? { industry: values.industry.trim() } : {}),
+        ...(values.description?.trim() ? { description: values.description.trim() } : {}),
         ...(values.websiteUrl?.trim() ? { websiteUrl: values.websiteUrl.trim() } : {}),
       });
       // Refresh memberships so the switcher shows the new workspace…
