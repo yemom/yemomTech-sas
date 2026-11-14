@@ -140,11 +140,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const response = await loadMe();
       chooseOrg(response.memberships, null);
       setStatus("authenticated");
-      // Use window.location for reliable navigation that Playwright can detect
-      // router.push may not trigger URL change in all test environments
-      window.location.href = "/onboarding";
+      router.push("/onboarding");
     },
-    [loadMe, chooseOrg],
+    [loadMe, chooseOrg, router],
   );
 
   const logout = useCallback(async () => {

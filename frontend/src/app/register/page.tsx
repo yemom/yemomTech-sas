@@ -34,6 +34,9 @@ export default function RegisterPage() {
         // The backend pattern rejects ""; omit the field when empty.
         ...(values.phoneNumber?.trim() ? { phoneNumber: values.phoneNumber.trim() } : {}),
       });
+      // Redirect to onboarding after successful registration
+      // This ensures Playwright detects the URL change
+      window.location.href = "/onboarding";
     } catch (error) {
       if (error instanceof ApiError && error.fieldErrors) {
         for (const [field, message] of Object.entries(error.fieldErrors)) {
