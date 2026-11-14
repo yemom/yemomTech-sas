@@ -1,6 +1,6 @@
 # YemomBizGrow Production Readiness Report
 
-**Verified against commit:** `HEAD` (see §9 for the exact SHA)
+**Verified against commit:** `04ff22b9ed6a1eaeb0190307b83bc5af641e2d88` (`04ff22b`)
 **Verification date:** 14 November 2026
 **Environment:** Windows 11, JDK 21, Node 22, Docker (Postgres 17 + Redis 7.4)
 
@@ -280,9 +280,11 @@ Browser   : cd frontend; npx playwright test            → 38 passed (1.4 min)
 Docker    : docker compose up -d --build                → 4/4 healthy
 ```
 
-**Commit SHA:** see the `Verified against commit` line at the top of this
-report — it is updated to the SHA of the commit that carries this report and
-all the fixes it describes.
+**Commit SHA:** `04ff22b9ed6a1eaeb0190307b83bc5af641e2d88` (`04ff22b`) —
+"fix(auth): resolve registration redirect, harden production profile, verify E2E".
+Every number in this report was produced by the commands above against that
+commit; this report was committed immediately afterwards, so the only
+difference between the verified tree and `HEAD` is this document.
 
 ---
 
