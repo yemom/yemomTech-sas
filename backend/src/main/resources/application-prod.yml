@@ -1,0 +1,32 @@
+# =============================================================
+# PRODUCTION profile — strict, no development defaults.
+#
+# Every secret and environment-specific value still comes from the
+# environment (no inline secrets here). This file only pins the
+# settings that must never differ between production deployments.
+#
+# NOTE: this profile is intentionally incompatible with the dev/test
+# profiles. Starting with `prod,dev` is rejected at startup by
+# SecurityProfileMode, because a mixed profile set silently relaxes
+# the production security boundary.
+# =============================================================
+springdoc:
+  # API documentation must not be reachable in production: it exposes
+  # the full endpoint inventory to anonymous callers.
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
+app:
+  security:
+    cookie:
+      # Production serves the app and the API from different sites
+      # (Vercel -> Render), so the refresh cookie needs SameSite=None.
+      # SameSite=None is only honoured by browsers over HTTPS, hence
+      # secure=true. StartupValidator rejects None+insecure.
+      same-site: ${COOKIE_SAME_SITE:None}
+      secure: ${COOKIE_SECURE:true}
+    invitation:
+      # Raw invitation tokens must never be returned in production.
+      expose-dev-token: false

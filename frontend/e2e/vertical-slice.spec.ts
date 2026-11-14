@@ -98,8 +98,12 @@ test("owner runs the full vertical slice", async ({ page }) => {
 });
 
 test("wrong password shows a generic error and reveals nothing", async ({ page }) => {
+  // A unique address per run: the backend throttles repeated failed logins
+  // for the same account, so a hard-coded address would start failing with
+  // 429 once the suite had been run a few times.
+  const email = `e2e-wrong-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.et`;
   await page.goto("/login");
-  await page.getByLabel("Email").fill("nobody@example.et");
+  await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill("Wrong-Password-1!");
   await page.getByRole("button", { name: "Sign in" }).click();
 

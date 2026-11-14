@@ -2,17 +2,22 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
-import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Button, ErrorCallout, Field, Input } from "@/components/ui";
 import { ApiError, errorMessage } from "@/lib/api/client";
 import { PASSWORD_RULES, registerSchema, type RegisterInput } from "@/lib/api/schemas";
-import { useAuth } from "@/lib/auth/auth-context";
+import { dashboardPath, useAuth } from "@/lib/auth/auth-context";
 
 export default function RegisterPage() {
-  const { register: registerUser } = useAuth();
+  const { status, memberships, register: registerUser } = useAuth();
+  const router = useRouter();
   const [formError, setFormError] = useState<string | null>(null);
   const [passwordValue, setPasswordValue] = useState("");
+  // True while a registration is in flight, so the "already authenticated"
+  // effect below does not fight the navigation the provider performs.
+  const [isRegistering, setIsRegistering] = useState(false);
 
   const {
     register,
@@ -21,10 +26,24 @@ export default function RegisterPage() {
     formState: { errors, isSubmitting },
   } = useForm<RegisterInput>({ resolver: zodResolver(registerSchema) });
 
-  // NOTE: redirect to /onboarding handled by AuthProvider register() function
+  // Navigation has a single owner: AuthProvider.register() performs the
+  // client-side router.push("/onboarding") once the session is established.
+  // The page must not navigate as well — a second navigation (even a full
+  // document load) races the router and cancels the in-flight transition,
+  // which leaves the browser on /register.
+
+  // An account that is already signed in has no business on the register
+  // form: send it to the workspace (or onboarding when it has no
+  // organization yet).
+  useEffect(() => {
+    if (status === "authenticated" && !isRegistering) {
+      router.replace(dashboardPath(memberships));
+    }
+  }, [status, memberships, isRegistering, router]);
 
   const onSubmit = handleSubmit(async (values) => {
     setFormError(null);
+    setIsRegistering(true);
     try {
       await registerUser({
         firstName: values.firstName.trim(),
@@ -34,10 +53,8 @@ export default function RegisterPage() {
         // The backend pattern rejects ""; omit the field when empty.
         ...(values.phoneNumber?.trim() ? { phoneNumber: values.phoneNumber.trim() } : {}),
       });
-      // Redirect to onboarding after successful registration
-      // This ensures Playwright detects the URL change
-      window.location.href = "/onboarding";
     } catch (error) {
+      setIsRegistering(false);
       if (error instanceof ApiError && error.fieldErrors) {
         for (const [field, message] of Object.entries(error.fieldErrors)) {
           setError(field as keyof RegisterInput, { message });

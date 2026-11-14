@@ -70,9 +70,16 @@ public class SecurityConfig {
                         ).permitAll()
                         // Public endpoints (lead capture forms, chatbot widgets)
                         .requestMatchers("/api/v1/public/**").permitAll()
-                        // Infrastructure: health probes and API documentation
+                        // Infrastructure: health probes
                         .requestMatchers(
-                                "/actuator/health", "/actuator/health/**",
+                                "/actuator/health", "/actuator/health/**"
+                        ).permitAll()
+                        // API documentation. The handlers only exist while
+                        // springdoc is enabled; production disables it
+                        // (application-prod.yml) so these paths answer 404.
+                        // StartupValidator refuses to boot a production
+                        // deployment with the documentation switched on.
+                        .requestMatchers(
                                 "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html",
                                 "/swagger-ui/index.html"
                         ).permitAll()

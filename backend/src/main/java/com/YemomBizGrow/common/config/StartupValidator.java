@@ -5,7 +5,6 @@ import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
 import java.util.Base64;
 import java.util.Locale;
 
@@ -15,7 +14,10 @@ import java.util.Locale;
  * <p>Configuration mistakes that would silently produce an insecure deployment
  * (weak JWT secret, wildcard CORS with credentials, dev-only invitation token
  * exposure, or known development AES keys) must crash the process instead of shipping.
- * The validator is lenient only for the {@code dev} and {@code test} profiles.</p>
+ * The validator is lenient only when the active profiles are <em>exclusively</em>
+ * {@code dev}/{@code test}/{@code local}; a production profile is always strict, and
+ * mixing a production profile with a development profile is rejected at startup
+ * (see {@link SecurityProfileMode}).</p>
  */
 @Component
 public class StartupValidator {
@@ -40,9 +42,10 @@ public class StartupValidator {
     @jakarta.annotation.PostConstruct
     public void validate() {
         String[] profiles = profilesInEffect();
-        boolean lenient = Arrays.stream(profiles)
-                .map(p -> p.toLowerCase(Locale.ROOT))
-                .anyMatch(p -> p.equals("dev") || p.equals("test") || p.equals("local"));
+        // Mixed prod+dev is rejected outright by the resolver; production is
+        // always strict, never "lenient because some dev profile is also on".
+        SecurityProfileMode mode = SecurityProfileMode.resolve(profiles);
+        boolean lenient = mode.isLenient();
 
         // 1. JWT Secret Validation
         AppProperties.Jwt jwt = properties.getSecurity().getJwt();
@@ -109,6 +112,20 @@ public class StartupValidator {
         if (!lenient && !chapaKey.isBlank()) {
             if (chapaKey.equalsIgnoreCase("mock") || chapaKey.equalsIgnoreCase("test") || chapaKey.contains("CHANGE_ME")) {
                 fail("CHAPA_SECRET_KEY is set to a placeholder/mock value in production.");
+            }
+        }
+
+        // 6. API Documentation Validation
+        // Production must not publish the OpenAPI description or the Swagger
+        // UI: they hand every anonymous caller a map of the API surface.
+        // application-prod.yml disables both; this check refuses to boot if
+        // somebody switches them back on in a production deployment.
+        if (!lenient) {
+            boolean apiDocsEnabled = environment.getProperty("springdoc.api-docs.enabled", Boolean.class, Boolean.FALSE);
+            boolean swaggerUiEnabled = environment.getProperty("springdoc.swagger-ui.enabled", Boolean.class, Boolean.FALSE);
+            if (apiDocsEnabled || swaggerUiEnabled) {
+                fail("API documentation must be disabled in production "
+                        + "(springdoc.api-docs.enabled=false, springdoc.swagger-ui.enabled=false).");
             }
         }
     }

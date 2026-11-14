@@ -9,6 +9,7 @@ import com.YemomBizGrow.crm.dto.PipelineSummaryResponse;
 import com.YemomBizGrow.crm.dto.PublicLeadCaptureRequest;
 import com.YemomBizGrow.crm.dto.TransitionStageRequest;
 import com.YemomBizGrow.membership.AccessControlService;
+import com.YemomBizGrow.membership.MembershipService;
 import com.YemomBizGrow.membership.Permission;
 import com.YemomBizGrow.organization.Organization;
 import com.YemomBizGrow.organization.OrganizationRepository;
@@ -52,6 +53,9 @@ class LeadServiceTest {
     @Mock
     private AuditService auditService;
 
+    @Mock
+    private MembershipService membershipService;
+
     private LeadService leadService;
 
     private final UUID actorId = UUID.randomUUID();
@@ -64,7 +68,8 @@ class LeadServiceTest {
                 activityRepository,
                 organizationRepository,
                 accessControlService,
-                auditService
+                auditService,
+                membershipService
         );
     }
 
@@ -105,6 +110,48 @@ class LeadServiceTest {
         assertThatThrownBy(() -> leadService.getLead(actorId, orgId, leadId))
                 .isInstanceOf(NotFoundException.class)
                 .hasMessageContaining("Lead not found");
+    }
+
+    @Test
+    @DisplayName("A lead cannot be assigned to a user who is not an active member of the workspace")
+    void createLeadRejectsForeignAssignee() {
+        UUID outsider = UUID.randomUUID();
+        when(membershipService.findActive(orgId, outsider)).thenReturn(Optional.empty());
+
+        CreateLeadRequest request = new CreateLeadRequest(
+                "Abebe", "Bikila", "abebe@example.et", "+251911223344",
+                "Addis Marathon", LeadSource.DIRECT, LeadStage.NEW, outsider,
+                new BigDecimal("50000.00"), null
+        );
+
+        assertThatThrownBy(() -> leadService.createLead(actorId, orgId, request))
+                .isInstanceOf(com.YemomBizGrow.common.exception.BadRequestException.class)
+                .hasMessageContaining("active member of this workspace");
+
+        verify(leadRepository, never()).save(any(Lead.class));
+    }
+
+    @Test
+    @DisplayName("A lead can be assigned to an active member of the workspace")
+    void createLeadAcceptsMemberAssignee() {
+        UUID teammate = UUID.randomUUID();
+        when(membershipService.findActive(orgId, teammate))
+                .thenReturn(Optional.of(new com.YemomBizGrow.membership.OrganizationMembership()));
+        when(leadRepository.save(any(Lead.class))).thenAnswer(inv -> {
+            Lead l = inv.getArgument(0);
+            l.setId(UUID.randomUUID());
+            return l;
+        });
+
+        CreateLeadRequest request = new CreateLeadRequest(
+                "Abebe", "Bikila", "abebe@example.et", "+251911223344",
+                "Addis Marathon", LeadSource.DIRECT, LeadStage.NEW, teammate,
+                new BigDecimal("50000.00"), null
+        );
+
+        LeadResponse response = leadService.createLead(actorId, orgId, request);
+
+        assertThat(response.assignedUserId()).isEqualTo(teammate);
     }
 
     @Test
@@ -230,7 +277,8 @@ class LeadServiceTest {
         when(mockRedis.execute(any(), any(), any())).thenReturn(15L); // > 10 attempts
 
         LeadService rateLimitedService = new LeadService(
-                leadRepository, activityRepository, organizationRepository, accessControlService, auditService, mockRedis
+                leadRepository, activityRepository, organizationRepository, accessControlService, auditService,
+                membershipService, mockRedis
         );
 
         PublicLeadCaptureRequest request = new PublicLeadCaptureRequest(
@@ -257,7 +305,8 @@ class LeadServiceTest {
         });
 
         LeadService fallbackService = new LeadService(
-                leadRepository, activityRepository, organizationRepository, accessControlService, auditService, null
+                leadRepository, activityRepository, organizationRepository, accessControlService, auditService,
+                membershipService, null
         );
 
         PublicLeadCaptureRequest request = new PublicLeadCaptureRequest(

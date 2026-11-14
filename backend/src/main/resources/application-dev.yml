@@ -23,11 +23,21 @@ app:
       secret: ${JWT_SECRET:dev_only_secret_do_not_use_in_production_0a1b2c3d4e5f6789abcdef}
     cors:
       # Dev allows both common Next.js ports; production must set an exact list.
-      allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:3001}
+      allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:3001,http://localhost:3101}
     invitation:
       # Raw invitation tokens are returned to the developer in dev so the
       # invite flow is testable without SMTP. Production must never do this.
       expose-dev-token: true
+
+management:
+  health:
+    mail:
+      # Local development has no SMTP server. Without this the mail indicator
+      # fails and drags the *aggregate* health endpoint to DOWN, which makes
+      # the whole service look broken (and trips any external monitor) even
+      # though the API is fully functional. Production keeps the indicator on,
+      # because a broken mail relay there really is an incident.
+      enabled: false
 
 logging:
   level:

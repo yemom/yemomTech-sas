@@ -8,7 +8,7 @@ import { useForm } from "react-hook-form";
 import { Button, ErrorCallout, Field, Input, PageLoader } from "@/components/ui";
 import { ApiError, errorMessage } from "@/lib/api/client";
 import { loginSchema, type LoginInput } from "@/lib/api/schemas";
-import { useAuth } from "@/lib/auth/auth-context";
+import { dashboardPath, useAuth } from "@/lib/auth/auth-context";
 
 /**
  * useSearchParams requires a Suspense boundary when the route is statically
@@ -23,11 +23,14 @@ export default function LoginPage() {
 }
 
 function LoginForm() {
-  const { status, login } = useAuth();
+  const { status, memberships, login } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const next = searchParams.get("next");
   const [formError, setFormError] = useState<string | null>(null);
+  // True while a sign-in is in flight so the "already authenticated" effect
+  // does not fight the navigation that login() performs.
+  const [isSigningIn, setIsSigningIn] = useState(false);
 
   const {
     register,
@@ -36,18 +39,21 @@ function LoginForm() {
     formState: { errors, isSubmitting },
   } = useForm<LoginInput>({ resolver: zodResolver(loginSchema) });
 
-  // Already signed in? Continue to the requested page (or the workspace).
+  // Already signed in? Continue to the requested page, or to the workspace
+  // (or onboarding when the account has no organization yet).
   useEffect(() => {
-    if (status === "authenticated") {
-      router.replace(safeNext(next) ?? "/workspace");
+    if (status === "authenticated" && !isSigningIn) {
+      router.replace(safeNext(next) ?? dashboardPath(memberships));
     }
-  }, [status, next, router]);
+  }, [status, memberships, next, isSigningIn, router]);
 
   const onSubmit = handleSubmit(async (values) => {
     setFormError(null);
+    setIsSigningIn(true);
     try {
       await login(values.email, values.password, next ?? undefined);
     } catch (error) {
+      setIsSigningIn(false);
       if (error instanceof ApiError && error.status === 401) {
         setFormError("Incorrect email or password.");
         return;

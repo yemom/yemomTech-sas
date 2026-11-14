@@ -12,58 +12,23 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.containers.PostgreSQLContainer;
 
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 /**
- * Base class for every integration test: boots the FULL application (filters,
- * security chain, JPA, Flyway, Redis) against throwaway PostgreSQL and Redis
- * containers.
+ * Base class for every integration test that runs under the {@code test}
+ * profile: boots the FULL application (filters, security chain, JPA, Flyway,
+ * Redis) against the throwaway PostgreSQL and Redis containers.
  *
- * <p>Why containers instead of a shared dev database: each build gets a pristine
- * schema that only Flyway created (proving migrations alone produce a schema
- * Hibernate accepts), and tests can run in any order or in parallel CI jobs
- * without shared-state flakiness.</p>
- *
- * <p>Container lifetime note: the containers are JVM singletons started lazily by
- * the first context that needs them and reaped by Ryuk when the test JVM exits.
- * They are deliberately NOT {@code @Container}-per-class: Spring caches the
- * application context (keyed by configuration, not by container port), so a
- * class-scoped container would be stopped while a later test class still reuses
- * the context pointing at its dead port.</p>
+ * <p>The containers live in {@link AbstractContainerTest} so that a test with
+ * a different Spring profile (e.g. {@link ProductionProfileIT}) can share the
+ * same containers without inheriting this class's {@code test} profile.</p>
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
-public abstract class AbstractIntegrationTest {
-
-    private static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:17-alpine")
-            .withDatabaseName("YemomBizGrow_test")
-            .withUsername("YemomBizGrow_test")
-            .withPassword("YemomBizGrow_test");
-
-    // No official Redis module exists in Testcontainers; the generic container
-    // with an exposed port is the documented approach.
-    private static final GenericContainer<?> REDIS = new GenericContainer<>("redis:7.4-alpine")
-            .withExposedPorts(6379);
-
-    @DynamicPropertySource
-    static void overrideDataSourceAndRedis(DynamicPropertyRegistry registry) {
-        if (!POSTGRES.isRunning()) {
-            POSTGRES.start();
-        }
-        if (!REDIS.isRunning()) {
-            REDIS.start();
-        }
-        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
-        registry.add("spring.datasource.username", POSTGRES::getUsername);
-        registry.add("spring.datasource.password", POSTGRES::getPassword);
-        registry.add("spring.data.redis.host", REDIS::getHost);
-        registry.add("spring.data.redis.port", () -> REDIS.getMappedPort(6379));
-    }
+public abstract class AbstractIntegrationTest extends AbstractContainerTest {
 
     @Autowired
     protected TestRestTemplate rest;
@@ -92,6 +57,10 @@ public abstract class AbstractIntegrationTest {
 
     protected ResponseEntity<String> post(String path, Object body, HttpHeaders headers) {
         return rest.exchange(path, HttpMethod.POST, new HttpEntity<>(body, headers), String.class);
+    }
+
+    protected ResponseEntity<String> put(String path, Object body, HttpHeaders headers) {
+        return rest.exchange(path, HttpMethod.PUT, new HttpEntity<>(body, headers), String.class);
     }
 
     protected ResponseEntity<String> patch(String path, Object body, HttpHeaders headers) {

@@ -128,7 +128,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setStatus("authenticated");
       // Honor the `next` param from RequireAuth — same-app absolute paths only
       // (never an external URL, which would be an open-redirect vector).
-      router.replace(next && next.startsWith("/") && !next.startsWith("//") ? next : dashboardPath());
+      router.replace(next && next.startsWith("/") && !next.startsWith("//") ? next : dashboardPath(response.memberships));
     },
     [loadMe, chooseOrg, router],
   );
@@ -196,9 +196,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
-/** Where an authenticated user should land (onboarding when no org yet). */
-export function dashboardPath(): string {
-  return "/workspace";
+/**
+ * Where an authenticated user should land.
+ *
+ * <p>A user without an organization has nothing to see in the workspace — the
+ * workspace layout would bounce them to /onboarding anyway. Deciding it here
+ * avoids a pointless round trip through /workspace.</p>
+ */
+export function dashboardPath(memberships: MembershipBrief[] = []): string {
+  return memberships.length > 0 ? "/workspace" : "/onboarding";
 }
 
 function readStoredOrg(): string | null {

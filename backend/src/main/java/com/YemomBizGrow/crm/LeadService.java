@@ -2,6 +2,7 @@ package com.YemomBizGrow.crm;
 
 import com.YemomBizGrow.audit.AuditAction;
 import com.YemomBizGrow.audit.AuditService;
+import com.YemomBizGrow.common.exception.BadRequestException;
 import com.YemomBizGrow.common.exception.NotFoundException;
 import com.YemomBizGrow.common.exception.TooManyRequestsException;
 import com.YemomBizGrow.common.response.PageResponse;
@@ -15,6 +16,7 @@ import com.YemomBizGrow.crm.dto.PublicLeadCaptureRequest;
 import com.YemomBizGrow.crm.dto.TransitionStageRequest;
 import com.YemomBizGrow.crm.dto.UpdateLeadRequest;
 import com.YemomBizGrow.membership.AccessControlService;
+import com.YemomBizGrow.membership.MembershipService;
 import com.YemomBizGrow.membership.Permission;
 import com.YemomBizGrow.organization.Organization;
 import com.YemomBizGrow.organization.OrganizationRepository;
@@ -57,6 +59,7 @@ public class LeadService {
     private final OrganizationRepository organizationRepository;
     private final AccessControlService accessControlService;
     private final AuditService auditService;
+    private final MembershipService membershipService;
     private final StringRedisTemplate redisTemplate;
 
     public LeadService(
@@ -64,8 +67,10 @@ public class LeadService {
             LeadActivityRepository activityRepository,
             OrganizationRepository organizationRepository,
             AccessControlService accessControlService,
-            AuditService auditService) {
-        this(leadRepository, activityRepository, organizationRepository, accessControlService, auditService, null);
+            AuditService auditService,
+            MembershipService membershipService) {
+        this(leadRepository, activityRepository, organizationRepository, accessControlService, auditService,
+                membershipService, null);
     }
 
     @Autowired
@@ -75,18 +80,37 @@ public class LeadService {
             OrganizationRepository organizationRepository,
             AccessControlService accessControlService,
             AuditService auditService,
+            MembershipService membershipService,
             @Autowired(required = false) StringRedisTemplate redisTemplate) {
         this.leadRepository = leadRepository;
         this.activityRepository = activityRepository;
         this.organizationRepository = organizationRepository;
         this.accessControlService = accessControlService;
         this.auditService = auditService;
+        this.membershipService = membershipService;
         this.redisTemplate = redisTemplate;
+    }
+
+    /**
+     * A lead may only be assigned to somebody who actually belongs to the
+     * workspace. Without this check a lead could be assigned to a user from a
+     * different organization (or to a removed member), which leaks the lead's
+     * existence across the tenant boundary and leaves the pipeline with an
+     * assignee who can never work on it.
+     */
+    private void requireActiveMember(UUID organizationId, UUID assignedUserId) {
+        if (assignedUserId == null) {
+            return;
+        }
+        if (membershipService.findActive(organizationId, assignedUserId).isEmpty()) {
+            throw new BadRequestException("The assignee must be an active member of this workspace.");
+        }
     }
 
     @Transactional
     public LeadResponse createLead(UUID actorUserId, UUID organizationId, CreateLeadRequest request) {
         accessControlService.requirePermission(actorUserId, organizationId, Permission.LEAD_MANAGE);
+        requireActiveMember(organizationId, request.assignedUserId());
 
         Lead lead = new Lead();
         lead.setOrganizationId(organizationId);
@@ -181,6 +205,7 @@ public class LeadService {
             lead.setCompanyName(request.companyName().trim());
         }
         if (request.assignedUserId() != null) {
+            requireActiveMember(organizationId, request.assignedUserId());
             lead.setAssignedUserId(request.assignedUserId());
         }
         if (request.estimatedValueEtb() != null) {

@@ -74,8 +74,17 @@ public class OrganizationService {
 
         Organization saved;
         try {
-            saved = organizationRepository.save(organization);
+            // saveAndFlush, not save: the INSERT is otherwise deferred to the
+            // transaction commit, which happens *outside* this try block — the
+            // unique-slug violation would then escape as an unhandled 500
+            // instead of a conflict. Flushing here makes the database the
+            // final authority on slug uniqueness, inside the catch.
+            saved = organizationRepository.saveAndFlush(organization);
         } catch (DataIntegrityViolationException e) {
+            // Two workspaces with the same name can pick the same candidate
+            // slug between the uniqueness check and the insert. The loser gets
+            // a clean conflict and can retry (the next attempt allocates a
+            // suffixed slug because the base slug now exists).
             throw new ConflictException("Could not allocate a unique organization address. Please retry.");
         }
 

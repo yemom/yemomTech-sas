@@ -22,6 +22,10 @@ frontend/test-results/
 frontend/playwright-report/
 frontend/blob-report/
 frontend/playwright/.cache/
+backend/verify-output.txt
+backend/*-output.txt
+frontend/*-output.txt
+frontend/*-results.txt
 
 # ---- Environment / secrets ----
 .env

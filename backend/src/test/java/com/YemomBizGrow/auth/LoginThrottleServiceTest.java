@@ -78,12 +78,106 @@ class LoginThrottleServiceTest {
     }
 
     @Test
-    @DisplayName("Redis outage fails open — authentication stays available")
-    void failsOpenOnRedisOutage() {
+    @DisplayName("Redis outage degrades to a conservative in-process limit instead of disabling protection")
+    void redisOutageDegradesToLocalLimit() {
+        // A permissive production limit so the *degraded* ceiling (5) governs.
+        properties.getSecurity().getLogin().setMaxAttempts(10);
         when(redis.opsForValue()).thenReturn(valueOperations);
         when(valueOperations.get(anyString())).thenThrow(new RuntimeException("connection refused"));
+        when(redis.execute(any(RedisScript.class), anyList(), anyString()))
+                .thenThrow(new RuntimeException("connection refused"));
 
+        // Five failures are tolerated (precheck -> attempt -> recordFailure)...
+        for (int attempt = 0; attempt < 5; attempt++) {
+            assertThatCode(() -> throttle.precheck("user@example.com")).doesNotThrowAnyException();
+            throttle.recordFailure("user@example.com");
+        }
+
+        // ...the sixth attempt is refused by the degraded limiter.
+        assertThatCode(() -> throttle.precheck("user@example.com"))
+                .isInstanceOfSatisfying(com.YemomBizGrow.common.exception.TooManyRequestsException.class,
+                        e -> assertThat(e.getMessage()).contains("Too many failed login attempts"));
+    }
+
+    @Test
+    @DisplayName("the degraded limit is bypassed once Redis recovers")
+    void redisRecoveryRestoresSharedCounters() {
+        properties.getSecurity().getLogin().setMaxAttempts(10);
+        when(redis.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.get(anyString())).thenThrow(new RuntimeException("connection refused"));
+        when(redis.execute(any(RedisScript.class), anyList(), anyString()))
+                .thenThrow(new RuntimeException("connection refused"));
+
+        for (int attempt = 0; attempt < 5; attempt++) {
+            throttle.recordFailure("user@example.com");
+        }
+        // Degraded limiter is now saturated...
+        assertThatCode(() -> throttle.precheck("user@example.com"))
+                .isInstanceOf(com.YemomBizGrow.common.exception.TooManyRequestsException.class);
+
+        // ...but once Redis answers, the shared counters govern again and the
+        // in-process fallback no longer blocks the user.
+        // NOTE: doReturn() avoids invoking the currently-throwing stub.
+        org.mockito.Mockito.doReturn("0").when(valueOperations).get(anyString());
         assertThatCode(() -> throttle.precheck("user@example.com")).doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("a successful login clears the degraded counter")
+    void successfulLoginClearsDegradedCounter() {
+        when(redis.execute(any(RedisScript.class), anyList(), anyString()))
+                .thenThrow(new RuntimeException("connection refused"));
+
+        throttle.recordFailure("user@example.com");
+        assertThat(throttle.degradedTrackedKeyCount()).isEqualTo(1);
+
+        throttle.recordSuccess("user@example.com");
+        assertThat(throttle.degradedTrackedKeyCount()).isZero();
+    }
+
+    @Test
+    @DisplayName("concurrent failures during an outage are counted without losing increments")
+    void concurrentFailuresDuringOutageAreCounted() throws Exception {
+        when(redis.opsForValue()).thenReturn(valueOperations);
+        when(valueOperations.get(anyString())).thenThrow(new RuntimeException("connection refused"));
+        when(redis.execute(any(RedisScript.class), anyList(), anyString()))
+                .thenThrow(new RuntimeException("connection refused"));
+
+        int threads = 16;
+        java.util.concurrent.CountDownLatch start = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(threads);
+        try {
+            for (int i = 0; i < threads; i++) {
+                pool.submit(() -> {
+                    start.await();
+                    throttle.recordFailure("user@example.com");
+                    return null;
+                });
+            }
+            start.countDown();
+            pool.shutdown();
+            assertThat(pool.awaitTermination(10, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+        } finally {
+            pool.shutdownNow();
+        }
+
+        // Every failure must be counted: the degraded limiter must refuse the
+        // next attempt rather than losing increments under concurrency.
+        assertThatCode(() -> throttle.precheck("user@example.com"))
+                .isInstanceOf(com.YemomBizGrow.common.exception.TooManyRequestsException.class);
+    }
+
+    @Test
+    @DisplayName("the degraded limiter tracks a bounded number of keys")
+    void degradedLimiterIsBounded() {
+        when(redis.execute(any(RedisScript.class), anyList(), anyString()))
+                .thenThrow(new RuntimeException("connection refused"));
+
+        for (int i = 0; i < 10_500; i++) {
+            throttle.recordFailure("user" + i + "@example.com");
+        }
+
+        assertThat(throttle.degradedTrackedKeyCount()).isLessThanOrEqualTo(10_000);
     }
 
     @Test
