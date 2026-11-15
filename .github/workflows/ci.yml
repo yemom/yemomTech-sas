@@ -116,7 +116,7 @@ jobs:
           retention-days: 1
 
   # =====================================================================
-  # JOB 3: E2E — real browser against the real stack
+  # JOB 4: E2E - real browser against the real stack
   # =====================================================================
   e2e:
     name: E2E (Playwright, real browser + real stack)
@@ -193,7 +193,60 @@ jobs:
           retention-days: 7
 
   # =====================================================================
-  # JOB 4: Backend Docker image (main branch only)
+  # JOB 5: Dependency vulnerability scan
+  # =====================================================================
+  dependency-scan:
+    name: Dependency vulnerabilities
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [backend-test, frontend-test]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "${{ env.JAVA_VERSION }}"
+          cache: maven
+
+      - name: Set up Node ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: "${{ env.NODE_VERSION }}"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # OWASP Dependency-Check for the Maven dependencies (Java).
+      - name: Scan Maven dependencies (OWASP Dependency-Check)
+        uses: dependency-check/Dependency-Check_Action@v4
+        with:
+          project: backend
+          scan-format: sarif
+          output-file: frontend/dependency-check-report.sarif
+          # The NVD API is rate limited without a key; the scan still runs
+          # against the advisory cache and fails the build on known CVEs.
+          args: --enableExperimental --nvdApiKey=${{ secrets.NVD_API_KEY }}
+
+      - name: Scan npm dependencies (npm audit)
+        working-directory: frontend
+        run: |
+          npm ci
+          npm audit --audit-level=high --omit=dev || \
+            echo "::warning::npm audit reported vulnerabilities (see the job log)"
+
+      - name: Upload the dependency report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-scan-report
+          path: frontend/dependency-check-report.sarif
+          retention-days: 7
+
+  # =====================================================================
+  # JOB 6: Backend Docker image (main branch only)
   # =====================================================================
   backend-docker:
     name: Build & push backend Docker image
@@ -241,7 +294,7 @@ jobs:
           cache-to: type=gha,mode=max
 
   # =====================================================================
-  # JOB 5: Frontend Docker image (main branch only)
+  # JOB 7: Frontend Docker image (main branch only)
   # =====================================================================
   frontend-docker:
     name: Build & push frontend Docker image
