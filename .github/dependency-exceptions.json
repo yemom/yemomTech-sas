@@ -1,0 +1,7 @@
+{
+  "_comment": "Documented, dated exceptions to the dependency audit policy. Every entry needs a reason and an expiry date; an expired entry fails the build. See infrastructure/scripts/audit-policy.mjs.",
+  "1096522": {
+    "reason": "Example entry - replace with a real advisory. Only add an exception when there is no fixed version and no runtime impact; prefer an explicit override in package.json over a blanket exception.",
+    "expires": "2026-12-31"
+  }
+}

@@ -226,16 +226,27 @@ jobs:
           project: backend
           scan-format: sarif
           output-file: frontend/dependency-check-report.sarif
-          # The NVD API is rate limited without a key; the scan still runs
-          # against the advisory cache and fails the build on known CVEs.
+          # fail-on-severity makes the job actually fail on a known CVE
+          # instead of only reporting it. NVD_API_KEY is optional: without
+          # it the scan uses the hosted feed, which is slower but still gates.
+          fail-on-severity: HIGH
           args: --enableExperimental --nvdApiKey=${{ secrets.NVD_API_KEY }}
 
-      - name: Scan npm dependencies (npm audit)
-        working-directory: frontend
-        run: |
-          npm ci
-          npm audit --audit-level=high --omit=dev || \
-            echo "::warning::npm audit reported vulnerabilities (see the job log)"
+      - name: Audit npm production dependencies against the policy
+        # Production dependencies: HIGH and CRITICAL advisories block the build.
+        working-directory: .
+        run: node infrastructure/scripts/audit-policy.mjs --scope=prod --severity=high
+
+      - name: Audit npm development dependencies against the policy
+        # Development dependencies: only CRITICAL advisories block the build.
+        working-directory: .
+        run: node infrastructure/scripts/audit-policy.mjs --scope=all --severity=critical
+
+      - name: Self-test the audit policy gate
+        # Proves the gate fails on a blocking advisory, honours a dated
+        # exception and ignores a low-severity one.
+        working-directory: .
+        run: node infrastructure/scripts/audit-policy.test.mjs
 
       - name: Upload the dependency report
         if: always()
@@ -246,11 +257,39 @@ jobs:
           retention-days: 7
 
   # =====================================================================
+  # JOB 5b: Dependency review (pull requests)
+  # =====================================================================
+  dependency-review:
+    name: Dependency review (advisory database)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [backend-test, frontend-test]
+    if: github.event_name == 'pull_request'
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Uses the GitHub Advisory Database - no API key needed - and fails on
+      # any newly introduced vulnerable dependency in the pull request.
+      - name: Review the dependency changes
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+          comment-summary-in-pr: on-failure
+
+  # =====================================================================
   # JOB 6: Backend Docker image (main branch only)
   # =====================================================================
   backend-docker:
     name: Build & push backend Docker image
-    needs: [backend-test, frontend-test]
+    # The image is only published after the tests, the browser suite and the
+    # dependency scan have all passed: a vulnerable or broken build must never
+    # reach the registry.
+    needs: [backend-test, frontend-test, e2e, dependency-scan]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
@@ -298,7 +337,9 @@ jobs:
   # =====================================================================
   frontend-docker:
     name: Build & push frontend Docker image
-    needs: [backend-test, frontend-test]
+    # Same gate as the backend: no image is published unless the tests, the
+    # browser suite and the dependency scan have all passed.
+    needs: [backend-test, frontend-test, e2e, dependency-scan]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'

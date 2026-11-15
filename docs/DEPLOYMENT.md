@@ -99,6 +99,60 @@ Only `health` and `info` are exposed. Logs are structured around the
 `traceId` from `RequestTraceFilter` (also returned to clients in error
 envelopes) — grep a user-reported `traceId` to find the full request story.
 
+## Dependency vulnerability policy
+
+The pipeline **fails** on a known vulnerability — it does not merely warn.
+The policy lives in one place and is enforced by code, not by convention.
+
+| Scope | Blocking threshold | Tool |
+| --- | --- | --- |
+| npm production dependencies | **HIGH** and CRITICAL | `infrastructure/scripts/audit-policy.mjs --scope=prod --severity=high` |
+| npm development dependencies | **CRITICAL** only | `infrastructure/scripts/audit-policy.mjs --scope=all --severity=critical` |
+| Maven dependencies | **HIGH** and above (CVSS ≥ 7) | OWASP Dependency-Check, `fail-on-severity: HIGH` |
+| Pull requests | **HIGH** and above | `actions/dependency-review-action` (GitHub Advisory Database) |
+
+Running the gates locally:
+
+```bash
+node infrastructure/scripts/audit-policy.mjs --scope=prod --severity=high
+node infrastructure/scripts/audit-policy.mjs --scope=all --severity=critical
+node infrastructure/scripts/audit-policy.test.mjs     # proves the gate fails
+```
+
+### Exceptions
+
+An advisory may only be excepted with **a documented reason and an expiry
+date**, recorded in `.github/dependency-exceptions.json`:
+
+```json
+{
+  "1096522": {
+    "reason": "Why this does not affect us.",
+    "expires": "2026-12-31"
+  }
+}
+```
+
+The gate treats an exception with no reason, no expiry, or a past expiry as
+**blocking** — an expired exception cannot silently re-approve a dependency.
+Prefer an explicit `overrides` entry in `frontend/package.json` (or a pinned
+upgrade) over a blanket exception.
+
+`audit-policy.test.mjs` is a self-test that feeds synthetic advisory reports
+through the same evaluation logic and asserts the exit codes, so the gate
+itself cannot rot into a no-op.
+
+### What the gate cannot see
+
+- OWASP Dependency-Check downloads the NVD feed; without `secrets.NVD_API_KEY`
+  the scan is slower and may be based on the last cached feed. **Set
+  `NVD_API_KEY` in the repository secrets** for complete coverage.
+- The gate evaluates *declared* dependencies. It does not detect a
+  compromised upstream build or a dependency used in a way the advisory does
+  not describe — that is what the staging provider checks (below) are for.
+
+---
+
 ## Database backup and restore
 
 `infrastructure/scripts/postgres-backup.sh` implements the whole procedure.

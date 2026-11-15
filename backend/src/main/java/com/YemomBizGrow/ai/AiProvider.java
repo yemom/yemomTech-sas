@@ -10,18 +10,18 @@ import java.util.Optional;
 
 public interface AiProvider {
 
-    List<AiRecommendation> generateRecommendations(
-            Organization organization,
-            List<Website> websites,
-            Optional<SeoAudit> latestAudit,
-            long totalLeads,
-            long wonLeads,
-            AnalyticsTotals totals);
+        List<AiRecommendation> generateRecommendations(
+                        Organization organization,
+                        List<Website> websites,
+                        Optional<SeoAudit> latestAudit,
+                        long totalLeads,
+                        long wonLeads,
+                        AnalyticsTotals totals);
 
-    String generateChatReply(
-            ChatbotConfig config,
-            Organization organization,
-            List<ChatbotMessage> history,
-            String incomingMessage,
-            String faqContext);
+        String generateChatReply(
+                        ChatbotConfig config,
+                        Organization organization,
+                        List<ChatbotMessage> history,
+                        String incomingMessage,
+                        String faqContext);
 }
