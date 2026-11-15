@@ -135,6 +135,52 @@ test("an external next parameter is rejected as an open-redirect vector", async 
   expect(page.url()).not.toContain("evil.example.com");
 });
 
+test("a temporary /auth/me failure after registration does not break the journey", async ({ page }) => {
+  test.setTimeout(90_000);
+  const email = uniqueEmail("route-me-failure");
+
+  // The account is created and the refresh cookie is issued, but reading the
+  // profile fails. The user must not be told the registration failed (that
+  // would push them into a duplicate-registration loop) and must not be
+  // signed out.
+  let failProfileReads = true;
+  await page.route("**/api/v1/auth/me", async (route) => {
+    if (failProfileReads) {
+      await route.abort("failed");
+      return;
+    }
+    await route.continue();
+  });
+
+  await page.goto("/register");
+  await page.getByLabel("First name").fill("Routing");
+  await page.getByLabel("Last name").fill("Tester");
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Password").fill(PASSWORD);
+  await page.getByRole("button", { name: "Create account" }).click();
+
+  // The user still reaches onboarding...
+  await expect(page).toHaveURL(/\/onboarding$/, { timeout: 20_000 });
+  // ...and is NOT shown a registration failure.
+  await expect(page.getByText("already exists")).not.toBeVisible();
+  await expect(page.getByRole("heading", { name: "Create your workspace" })).toBeVisible();
+
+  // The profile endpoint works again from here on.
+  failProfileReads = false;
+
+  // The account really was created: signing in with the same credentials
+  // works. The session cookie is dropped first, otherwise the still-valid
+  // session would bounce us away from /login before the form can be used.
+  await page.context().clearCookies();
+  await page.goto("/login");
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Password").fill(PASSWORD);
+  await page.getByRole("button", { name: "Sign in" }).click();
+
+  await expect(page).toHaveURL(/\/(onboarding|workspace)/, { timeout: 20_000 });
+  expect(page.url()).not.toContain("/login");
+});
+
 test("a duplicate registration keeps the user on the register page", async ({ page }) => {
   test.setTimeout(90_000);
   const email = uniqueEmail("route-duplicate");

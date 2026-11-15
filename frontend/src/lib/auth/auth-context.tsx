@@ -21,6 +21,7 @@ import {
 import { useRouter } from "next/navigation";
 import {
   api,
+  ApiError,
   errorMessage,
   logoutRequest,
   onSessionEvent,
@@ -63,11 +64,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [me, setMe] = useState<MeResponse | null>(null);
   const meRef = useRef<MeResponse | null>(null);
   const [currentOrgId, setCurrentOrgId] = useState<string | null>(null);
-  const loadMe = useCallback(async () => {
-    const response = await api.get<MeResponse>("/auth/me");
-    meRef.current = response;
-    setMe(response);
-    return response;
+
+  /**
+   * Read the profile and memberships.
+   *
+   * <p>Transient failures (a network blip, a 5xx while the server is
+   * restarting) are retried a couple of times with a short backoff. The
+   * profile is read right after registration and after every session
+   * bootstrap, which makes it the most likely place for a momentary network
+   * problem to surface — and the one place where giving up would be most
+   * confusing for the user.</p>
+   */
+  const loadMe = useCallback(async (attempts = 3): Promise<MeResponse> => {
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+      try {
+        const response = await api.get<MeResponse>("/auth/me");
+        meRef.current = response;
+        setMe(response);
+        return response;
+      } catch (error) {
+        lastError = error;
+        if (!isTransient(error) || attempt === attempts) {
+          throw error;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 250 * attempt));
+      }
+    }
+    throw lastError;
   }, []);
 
   /** Pick the stored org if the user still belongs to it, else the first one. */
@@ -137,8 +161,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (payload: RegisterPayload) => {
       const session = await api.public<AuthSession>("/auth/register", payload);
       setSession(session);
-      const response = await loadMe();
-      chooseOrg(response.memberships, null);
+      // From here on the account exists and the session is established. A
+      // failure to read the profile must NOT be reported as a failed
+      // registration: the user would retry and be told the email already
+      // exists, which is both wrong and alarming. Keep the session, continue
+      // to onboarding and let the next /auth/me read fill in the profile.
+      try {
+        const response = await loadMe();
+        chooseOrg(response.memberships, null);
+      } catch (error) {
+        console.warn(
+          "The profile could not be read after registration. The account was created and the session is valid; continuing.",
+          error,
+        );
+      }
       setStatus("authenticated");
       router.push("/onboarding");
     },
@@ -235,4 +271,21 @@ export function useAuth(): AuthContextValue {
 /** Throws a readable error when an auth mutation fails. */
 export function rethrow(error: unknown): never {
   throw new Error(errorMessage(error));
+}
+
+/**
+ * Whether a failure is worth retrying.
+ *
+ * <p>A network error (the request never reached the server) and a server-side
+ * error (5xx) are transient. A 401/403 is not: the session really is gone
+ * and retrying would only hide that. A 409 is not: the request conflicts with
+ * existing data and the same request will conflict again.</p>
+ */
+function isTransient(error: unknown): boolean {
+  if (error instanceof ApiError) {
+    return error.status >= 500 || error.status === 429;
+  }
+  // Everything else (a fetch TypeError, for example) is treated as transient:
+  // the request may not have reached the server at all.
+  return true;
 }

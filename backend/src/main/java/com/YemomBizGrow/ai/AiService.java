@@ -5,8 +5,11 @@ import com.YemomBizGrow.ai.dto.ChatbotConfigRequest;
 import com.YemomBizGrow.ai.dto.ChatbotConfigResponse;
 import com.YemomBizGrow.ai.dto.PublicChatMessageRequest;
 import com.YemomBizGrow.ai.dto.PublicChatMessageResponse;
+import com.YemomBizGrow.audit.AuditAction;
+import com.YemomBizGrow.audit.AuditService;
 import com.YemomBizGrow.common.exception.BadRequestException;
 import com.YemomBizGrow.common.exception.NotFoundException;
+import com.YemomBizGrow.common.exception.TooManyRequestsException;
 import com.YemomBizGrow.common.response.PageResponse;
 import com.YemomBizGrow.crm.Lead;
 import com.YemomBizGrow.crm.LeadRepository;
@@ -56,6 +59,8 @@ public class AiService {
     private final GoogleAnalyticsSnapshotRepository gaSnapshotRepository;
     private final AccessControlService accessControlService;
     private final AiProvider aiProvider;
+    private final AiGenerationGuard generationGuard;
+    private final AuditService auditService;
 
     public AiService(
             AiRecommendationRepository recommendationRepository,
@@ -68,7 +73,9 @@ public class AiService {
             LeadRepository leadRepository,
             GoogleAnalyticsSnapshotRepository gaSnapshotRepository,
             AccessControlService accessControlService,
-            AiProvider aiProvider) {
+            AiProvider aiProvider,
+            AiGenerationGuard generationGuard,
+            AuditService auditService) {
         this.recommendationRepository = recommendationRepository;
         this.chatbotConfigRepository = chatbotConfigRepository;
         this.conversationRepository = conversationRepository;
@@ -80,21 +87,26 @@ public class AiService {
         this.gaSnapshotRepository = gaSnapshotRepository;
         this.accessControlService = accessControlService;
         this.aiProvider = aiProvider;
+        this.generationGuard = generationGuard;
+        this.auditService = auditService;
     }
 
-    @Transactional
+    /**
+     * Reads the organization's stored recommendations.
+     *
+     * <p>This is a <b>pure read</b>: it never creates records and never calls the
+     * AI provider. Generation is an explicit, authorized action performed
+     * through {@code POST /ai/recommendations/generate}. Generating inside a GET
+     * made the endpoint non-idempotent, uncacheable, and able to spend provider
+     * quota (and write business data) from a harmless-looking page view.</p>
+     */
+    @Transactional(readOnly = true)
     public PageResponse<AiRecommendationResponse> getRecommendations(
             UUID actorUserId,
             UUID organizationId,
             RecommendationStatus status,
             Pageable pageable) {
         accessControlService.requirePermission(actorUserId, organizationId, Permission.ORG_VIEW);
-
-        long count = recommendationRepository.countByOrganizationIdAndStatus(organizationId, RecommendationStatus.OPEN);
-        if (count == 0) {
-            // Auto-generate initial set if empty
-            generateRecommendationsInternal(organizationId);
-        }
 
         Page<AiRecommendation> page = (status != null)
                 ? recommendationRepository.findByOrganizationIdAndStatusOrderByCreatedAtDesc(organizationId, status, pageable)
@@ -103,11 +115,47 @@ public class AiService {
         return PageResponse.from(page.map(AiRecommendationResponse::from));
     }
 
+    /**
+     * Generates a fresh batch of recommendations.
+     *
+     * <p>Guarded by {@link AiGenerationGuard}: one generation per organization
+     * at a time, and a bounded hourly budget per organization. Failures are
+     * recorded in the audit trail so a provider outage is visible instead of
+     * silent.</p>
+     */
     @Transactional
     public List<AiRecommendationResponse> generateRecommendations(UUID actorUserId, UUID organizationId) {
         accessControlService.requirePermission(actorUserId, organizationId, Permission.ORG_VIEW);
-        List<AiRecommendation> created = generateRecommendationsInternal(organizationId);
-        return created.stream().map(AiRecommendationResponse::from).toList();
+
+        if (generationGuard.isRateLimited(organizationId)) {
+            throw new TooManyRequestsException("Recommendation generation is limited to "
+                    + generationGuard.maxGenerationsPerHour()
+                    + " times per hour. Please try again later.");
+        }
+        if (!generationGuard.tryAcquire(organizationId)) {
+            throw new TooManyRequestsException(
+                    "A recommendation generation is already running for this workspace. Please wait for it to finish.");
+        }
+
+        try {
+            List<AiRecommendation> created = generateRecommendationsInternal(organizationId);
+            auditService.record(actorUserId, organizationId, AuditAction.AI_RECOMMENDATIONS_GENERATED,
+                    "ai_recommendations", organizationId,
+                    Map.of("count", created.size()));
+            return created.stream().map(AiRecommendationResponse::from).toList();
+        } catch (RuntimeException e) {
+            log.warn("AI recommendation generation failed for organization {}: {}", organizationId, e.getMessage());
+            try {
+                auditService.record(actorUserId, organizationId, AuditAction.AI_GENERATION_FAILED,
+                        "ai_recommendations", organizationId,
+                        Map.of("reason", e.getClass().getSimpleName()));
+            } catch (RuntimeException auditFailure) {
+                log.warn("Could not record the AI generation failure: {}", auditFailure.getMessage());
+            }
+            throw e;
+        } finally {
+            generationGuard.release(organizationId);
+        }
     }
 
     @Transactional

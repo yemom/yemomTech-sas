@@ -5,7 +5,10 @@ import com.YemomBizGrow.ai.dto.ChatbotConfigRequest;
 import com.YemomBizGrow.ai.dto.ChatbotConfigResponse;
 import com.YemomBizGrow.ai.dto.PublicChatMessageRequest;
 import com.YemomBizGrow.ai.dto.PublicChatMessageResponse;
+import com.YemomBizGrow.audit.AuditAction;
+import com.YemomBizGrow.audit.AuditService;
 import com.YemomBizGrow.common.exception.BadRequestException;
+import com.YemomBizGrow.common.exception.TooManyRequestsException;
 import com.YemomBizGrow.common.response.PageResponse;
 import com.YemomBizGrow.crm.Lead;
 import com.YemomBizGrow.crm.LeadRepository;
@@ -32,7 +35,9 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -61,6 +66,10 @@ class AiServiceTest {
     private AccessControlService accessControlService;
     @Mock
     private AiProvider aiProvider;
+    @Mock
+    private AiGenerationGuard generationGuard;
+    @Mock
+    private AuditService auditService;
 
     private AiService aiService;
 
@@ -81,7 +90,9 @@ class AiServiceTest {
                 leadRepository,
                 gaSnapshotRepository,
                 accessControlService,
-                aiProvider);
+                aiProvider,
+                generationGuard,
+                auditService);
 
         organization = new Organization();
         organization.setId(orgId);
@@ -101,7 +112,6 @@ class AiServiceTest {
         rec.setActionRecommendation("Add tags");
         rec.setStatus(RecommendationStatus.OPEN);
 
-        when(recommendationRepository.countByOrganizationIdAndStatus(orgId, RecommendationStatus.OPEN)).thenReturn(1L);
         when(recommendationRepository.findByOrganizationIdAndStatusOrderByCreatedAtDesc(
                 eq(orgId), eq(RecommendationStatus.OPEN), any())).thenReturn(new PageImpl<>(List.of(rec)));
 
@@ -111,6 +121,107 @@ class AiServiceTest {
         assertThat(resp.content()).hasSize(1);
         assertThat(resp.content().get(0).title()).isEqualTo("Fix Meta Tags");
         verify(accessControlService).requirePermission(actorId, orgId, Permission.ORG_VIEW);
+    }
+
+    @Test
+    void getRecommendations_isAPureRead_neverGeneratesAndNeverWrites() {
+        // A GET must not create recommendations, must not call the provider and
+        // must not write anything: generation is an explicit POST action.
+        when(recommendationRepository.findByOrganizationIdOrderByCreatedAtDesc(eq(orgId), any()))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        PageResponse<AiRecommendationResponse> resp = aiService.getRecommendations(
+                actorId, orgId, null, PageRequest.of(0, 20));
+
+        assertThat(resp.content()).isEmpty();
+        verify(aiProvider, never()).generateRecommendations(any(), any(), any(), anyLong(), anyLong(), any());
+        verify(recommendationRepository, never()).saveAll(any());
+        verify(recommendationRepository, never()).save(any(AiRecommendation.class));
+    }
+
+    @Test
+    void getRecommendations_doesNotGenerateWhenEmpty() {
+        // Regression guard for the defect: an empty list used to trigger
+        // generateRecommendationsInternal() from inside the GET.
+        when(recommendationRepository.findByOrganizationIdOrderByCreatedAtDesc(eq(orgId), any()))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        aiService.getRecommendations(actorId, orgId, null, PageRequest.of(0, 20));
+
+        verify(organizationRepository, never()).findById(any());
+        verify(leadRepository, never()).countByOrganizationIdAndStatus(any(), any());
+    }
+
+    @Test
+    void generateRecommendations_createsAndAudits() {
+        AiRecommendation rec = new AiRecommendation();
+        rec.setId(UUID.randomUUID());
+        rec.setOrganizationId(orgId);
+        rec.setCategory(RecommendationCategory.SEO);
+        rec.setPriority(RecommendationPriority.MEDIUM);
+        rec.setTitle("Improve load time");
+        rec.setStatus(RecommendationStatus.OPEN);
+
+        when(generationGuard.isRateLimited(orgId)).thenReturn(false);
+        when(generationGuard.tryAcquire(orgId)).thenReturn(true);
+        when(organizationRepository.findById(orgId)).thenReturn(Optional.of(organization));
+        when(websiteRepository.findTop5ByOrganizationIdOrderByCreatedAtDesc(orgId)).thenReturn(List.of());
+        when(leadRepository.countByOrganizationIdAndStatus(eq(orgId), any())).thenReturn(0L);
+        when(leadRepository.countByOrganizationIdAndStage(eq(orgId), any())).thenReturn(0L);
+        when(aiProvider.generateRecommendations(any(), any(), any(), anyLong(), anyLong(), any()))
+                .thenReturn(List.of(rec));
+        when(recommendationRepository.saveAll(any())).thenReturn(List.of(rec));
+
+        List<AiRecommendationResponse> created =
+                aiService.generateRecommendations(actorId, orgId);
+
+        assertThat(created).hasSize(1);
+        verify(aiProvider).generateRecommendations(any(), any(), any(), anyLong(), anyLong(), any());
+        verify(auditService).record(eq(actorId), eq(orgId), eq(AuditAction.AI_RECOMMENDATIONS_GENERATED),
+                eq("ai_recommendations"), eq(orgId), any());
+        verify(generationGuard).release(orgId);
+    }
+
+    @Test
+    void generateRecommendations_isRateLimited() {
+        when(generationGuard.isRateLimited(orgId)).thenReturn(true);
+
+        assertThatThrownBy(() -> aiService.generateRecommendations(actorId, orgId))
+                .isInstanceOf(TooManyRequestsException.class)
+                .hasMessageContaining("limited to");
+
+        verify(aiProvider, never()).generateRecommendations(any(), any(), any(), anyLong(), anyLong(), any());
+        verify(generationGuard, never()).tryAcquire(any());
+    }
+
+    @Test
+    void generateRecommendations_isRejectedWhenOneIsAlreadyRunning() {
+        when(generationGuard.isRateLimited(orgId)).thenReturn(false);
+        when(generationGuard.tryAcquire(orgId)).thenReturn(false);
+
+        assertThatThrownBy(() -> aiService.generateRecommendations(actorId, orgId))
+                .isInstanceOf(TooManyRequestsException.class)
+                .hasMessageContaining("already running");
+
+        verify(aiProvider, never()).generateRecommendations(any(), any(), any(), anyLong(), anyLong(), any());
+    }
+
+    @Test
+    void generateRecommendations_recordsFailureAndReleasesTheLock() {
+        when(generationGuard.isRateLimited(orgId)).thenReturn(false);
+        when(generationGuard.tryAcquire(orgId)).thenReturn(true);
+        when(organizationRepository.findById(orgId)).thenReturn(Optional.of(organization));
+        when(websiteRepository.findTop5ByOrganizationIdOrderByCreatedAtDesc(orgId)).thenReturn(List.of());
+        when(aiProvider.generateRecommendations(any(), any(), any(), anyLong(), anyLong(), any()))
+                .thenThrow(new IllegalStateException("provider unavailable"));
+
+        assertThatThrownBy(() -> aiService.generateRecommendations(actorId, orgId))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("provider unavailable");
+
+        verify(auditService).record(eq(actorId), eq(orgId), eq(AuditAction.AI_GENERATION_FAILED),
+                eq("ai_recommendations"), eq(orgId), any());
+        verify(generationGuard).release(orgId);
     }
 
     @Test

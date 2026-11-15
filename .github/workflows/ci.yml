@@ -17,7 +17,7 @@ env:
   # Backend
   JAVA_VERSION: "21"
   # Frontend
-  NODE_VERSION: "20"
+  NODE_VERSION: "22"
   # Docker
   REGISTRY: ghcr.io
   IMAGE_PREFIX: ${{ github.repository_owner }}
