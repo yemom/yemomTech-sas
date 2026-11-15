@@ -33,12 +33,14 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   workers: 1,
   reporter: process.env.CI ? "github" : "list",
-  // Assertions wait for real HTTP round-trips against a real backend
-  // (list members, load a workspace, …). The 5s default is marginal on a
-  // loaded CI machine, so the budget is raised globally. This is an assertion
-  // budget, not a sleep: no test waits a fixed amount of time for an outcome.
+  // Assertions wait for real HTTP round-trips against a real backend. Two of
+  // them depend on the session bootstrap (POST /auth/refresh -> GET /auth/me)
+  // before the app can decide where to navigate, so the budget has to cover a
+  // cold container start and a loaded CI machine. This is an assertion budget,
+  // not a sleep: no test waits a fixed amount of time for an outcome, and a
+  // redirect that never happens still fails.
   expect: {
-    timeout: 10_000,
+    timeout: 20_000,
   },
   use: {
     baseURL: process.env.E2E_BASE_URL ?? "http://localhost:3101",

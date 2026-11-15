@@ -128,6 +128,20 @@ Real PostgreSQL 17 + Redis 7.4 via Testcontainers, full application context
 | Production build | `npm run build` | pass — 23 routes prerendered |
 | Browser E2E | `npm run e2e` | **38 / 38** pass |
 
+The browser suite was run repeatedly during this verification. Two consecutive
+full runs finished green (38/38 in 1.7 min and 38/38 in 1.1 min).
+
+One flake was observed and fixed rather than ignored: under an extremely
+loaded machine (a 5.1 min run, ~4× slower than normal) two assertions that
+depend on the session bootstrap (`POST /auth/refresh` → `GET /auth/me` → the
+redirect decision) exceeded the assertion budget. The global expectation
+timeout is now 20 s, which covers a cold container start and a busy CI
+runner. This is an assertion budget, not a sleep — no test waits a fixed
+period for an outcome, and a redirect that never happens still fails. Worth
+noting: the API client deliberately **keeps** the session when the refresh
+request fails with a network error (only a 401/403 response ends it), so a
+slow backend degrades into "not signed in yet" rather than "signed out".
+
 New unit test file: `src/lib/api/api-base-url.test.ts` — asserts that the API
 base URL fallback is identical in `next.config.ts`, the API client,
 `.env.example`, `frontend/.env.example` and `docker-compose.yml`, and that it
@@ -314,8 +328,8 @@ Docker    : docker compose up -d --build                → 4/4 healthy
 **Commit SHA:** `04ff22b9ed6a1eaeb0190307b83bc5af641e2d88` (`04ff22b`) —
 "fix(auth): resolve registration redirect, harden production profile, verify E2E".
 Every number in this report was produced by the commands above against that
-commit; this report was committed immediately afterwards, so the only
-difference between the verified tree and `HEAD` is this document.
+commit. The commits that follow it (`3e27bee`, `11feb6e`) touch documentation
+and the evidence screenshots only — no application code.
 
 ---
 
