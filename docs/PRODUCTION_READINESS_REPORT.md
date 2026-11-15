@@ -328,8 +328,9 @@ Docker    : docker compose up -d --build                → 4/4 healthy
 **Commit SHA:** `04ff22b9ed6a1eaeb0190307b83bc5af641e2d88` (`04ff22b`) —
 "fix(auth): resolve registration redirect, harden production profile, verify E2E".
 Every number in this report was produced by the commands above against that
-commit. The commits that follow it (`3e27bee`, `11feb6e`) touch documentation
-and the evidence screenshots only — no application code.
+commit. The commits that follow it (`3e27bee`, `11feb6e`, `0108020`) touch
+documentation, the evidence screenshots and the Playwright assertion budget
+only — **no application code**.
 
 ---
 
