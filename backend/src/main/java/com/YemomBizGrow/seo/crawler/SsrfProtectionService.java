@@ -146,8 +146,83 @@ public class SsrfProtectionService {
             if (b0 == 0xFE && (b1 & 0xC0) == 0x80) return true;
             // 2001:db8::/32 (documentation)
             if (b0 == 0x20 && b1 == 0x01 && (bytes[2] & 0xFF) == 0x0D && (bytes[3] & 0xFF) == 0xB8) return true;
+
+            // IPv6 addresses that EMBED an IPv4 address. Java only folds the
+            // IPv4-mapped form (::ffff:a.b.c.d) into an Inet4Address; the
+            // IPv4-compatible form (::a.b.c.d) and the 6to4 form
+            // (2002::/16) stay Inet6Address and would otherwise sail past the
+            // IPv4 rules - "::127.0.0.1" is a perfectly good way to reach
+            // loopback. Unwrap them and apply the IPv4 rules to the payload.
+            byte[] embedded = embeddedIpv4(bytes);
+            if (embedded != null) {
+                try {
+                    return isProhibited(InetAddress.getByAddress(embedded));
+                } catch (UnknownHostException e) {
+                    // A four-byte address is always valid; treat anything else
+                    // as prohibited rather than allowing it through.
+                    return true;
+                }
+            }
         }
 
         return false;
+    }
+
+    /**
+     * Extracts the IPv4 address embedded in an IPv6 address, if any.
+     *
+     * <p>Recognised forms:</p>
+     * <ul>
+     *   <li><b>IPv4-compatible</b> — {@code ::a.b.c.d} (the first 12 bytes are
+     *       zero). Excludes {@code ::} and {@code ::1}, which are handled by
+     *       the loopback/unspecified checks.</li>
+     *   <li><b>6to4</b> — {@code 2002::/16}, which carries the IPv4 address
+     *       in bytes 2..5.</li>
+     *   <li><b>Teredo</b> — {@code 2001::/32}, which carries the client IPv4
+     *       address (obfuscated) in bytes 12..15.</li>
+     * </ul>
+     *
+     * @return the four bytes of the embedded IPv4 address, or {@code null}
+     *         when the address does not embed one
+     */
+    private static byte[] embeddedIpv4(byte[] bytes) {
+        if (bytes.length != 16) {
+            return null;
+        }
+        int b0 = bytes[0] & 0xFF;
+        int b1 = bytes[1] & 0xFF;
+
+        // 6to4: 2002::/16 -> the IPv4 address sits in bytes 2..5.
+        if (b0 == 0x20 && b1 == 0x02) {
+            return new byte[]{bytes[2], bytes[3], bytes[4], bytes[5]};
+        }
+
+        // Teredo: 2001:0000::/32 -> the obfuscated client IPv4 sits in 12..15.
+        if (b0 == 0x20 && b1 == 0x01 && (bytes[2] & 0xFF) == 0x00 && (bytes[3] & 0xFF) == 0x00) {
+            return new byte[]{
+                    (byte) ~bytes[12], (byte) ~bytes[13], (byte) ~bytes[14], (byte) ~bytes[15]};
+        }
+
+        // IPv4-compatible: ::a.b.c.d -> the first 12 bytes are zero.
+        boolean firstTwelveZero = true;
+        for (int i = 0; i < 12; i++) {
+            if (bytes[i] != 0) {
+                firstTwelveZero = false;
+                break;
+            }
+        }
+        if (firstTwelveZero) {
+            // :: and ::1 are the unspecified and loopback addresses; they are
+            // already rejected by the generic checks above.
+            boolean isUnspecifiedOrLoopback = (bytes[12] & 0xFF) == 0
+                    && (bytes[13] & 0xFF) == 0
+                    && (bytes[14] & 0xFF) == 0
+                    && ((bytes[15] & 0xFF) == 0 || (bytes[15] & 0xFF) == 1);
+            if (!isUnspecifiedOrLoopback) {
+                return new byte[]{bytes[12], bytes[13], bytes[14], bytes[15]};
+            }
+        }
+
+        return null;
     }
 }
