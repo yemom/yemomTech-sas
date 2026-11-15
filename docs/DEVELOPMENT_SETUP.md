@@ -5,7 +5,7 @@
 | Tool | Version | Notes |
 | --- | --- | --- |
 | JDK | 21 (tested: 21.0.9) | Backend targets Java 21 language level |
-| Node.js | 22 LTS+ (tested: 22.15.1) | Next.js 16 requires Node ≥ 20.9 |
+| Node.js | **22 LTS** (tested: 22.15.1) | One version across local dev, CI and the Docker images. Next.js 16 requires Node ≥ 20.9. |
 | npm | 11.x | `package-lock.json` is committed; CI uses `npm ci` |
 | Docker | 28.x | Postgres 17 + Redis 7 for local dev; Testcontainers for ITs |
 | Git | any recent | |
@@ -121,7 +121,7 @@ active.
 ```powershell
 # ---- backend ----
 cd backend
-.\mvnw.cmd -B clean verify               # full gate: 267 unit + 27 IT (Testcontainers)
+.\mvnw.cmd -B clean verify               # full gate: 301 unit + 30 IT (Testcontainers)
 .\mvnw.cmd test                          # unit tests only
 .\mvnw.cmd spring-boot:run               # dev server (APP_PORT env to move it)
 
@@ -138,7 +138,16 @@ npm run e2e:server                       # build + serve the standalone server o
 docker compose up -d postgres redis     # start db/cache
 docker compose down                     # stop all (volumes kept)
 docker compose down -v                  # stop + WIPE local data
+
+# ---- database backup / restore ----
+bash infrastructure/scripts/postgres-backup.sh backup    # dump to ./backups
+bash infrastructure/scripts/postgres-backup.sh verify    # backup + restore drill
 ```
+
+The `verify` drill restores the dump into an isolated scratch database,
+compares every table, checks the Flyway history and drops the scratch
+database again — it never modifies the application database. See
+[DEPLOYMENT.md](DEPLOYMENT.md#database-backup-and-restore).
 
 ### Running the E2E suite
 

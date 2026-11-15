@@ -649,30 +649,31 @@ function CreateLeadModal({
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
-            <Field label="First name" error={errors.firstName?.message} required>
-              <Input {...register("firstName")} placeholder="e.g. Abebe" />
+            <Field label="First name" error={errors.firstName?.message} htmlFor="lead-firstName" required>
+              <Input id="lead-firstName" {...register("firstName")} placeholder="e.g. Abebe" />
             </Field>
-            <Field label="Last name" error={errors.lastName?.message}>
-              <Input {...register("lastName")} placeholder="e.g. Bikila" />
+            <Field label="Last name" error={errors.lastName?.message} htmlFor="lead-lastName">
+              <Input id="lead-lastName" {...register("lastName")} placeholder="e.g. Bikila" />
             </Field>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Email" error={errors.email?.message}>
-              <Input {...register("email")} type="email" placeholder="client@example.et" />
+            <Field label="Email" error={errors.email?.message} htmlFor="lead-email">
+              <Input id="lead-email" {...register("email")} type="email" placeholder="client@example.et" />
             </Field>
-            <Field label="Phone number" error={errors.phoneNumber?.message}>
-              <Input {...register("phoneNumber")} placeholder="+251911..." />
+            <Field label="Phone number" error={errors.phoneNumber?.message} htmlFor="lead-phoneNumber">
+              <Input id="lead-phoneNumber" {...register("phoneNumber")} placeholder="+251911..." />
             </Field>
           </div>
 
-          <Field label="Company name" error={errors.companyName?.message}>
-            <Input {...register("companyName")} placeholder="e.g. Great Ethiopian Run Ltd." />
+          <Field label="Company name" error={errors.companyName?.message} htmlFor="lead-companyName">
+            <Input id="lead-companyName" {...register("companyName")} placeholder="e.g. Great Ethiopian Run Ltd." />
           </Field>
 
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Initial stage">
+            <Field label="Initial stage" htmlFor="lead-stage">
               <select
+                id="lead-stage"
                 {...register("stage")}
                 className="w-full text-xs border rounded-lg p-2.5 bg-white border-slate-300"
               >
@@ -683,8 +684,9 @@ function CreateLeadModal({
                 ))}
               </select>
             </Field>
-            <Field label="Estimated value (ETB)" error={errors.estimatedValueEtb?.message}>
+            <Field label="Estimated value (ETB)" error={errors.estimatedValueEtb?.message} htmlFor="lead-estimatedValueEtb">
               <Input
+                id="lead-estimatedValueEtb"
                 {...register("estimatedValueEtb")}
                 type="number"
                 step="any"
@@ -693,8 +695,9 @@ function CreateLeadModal({
             </Field>
           </div>
 
-          <Field label="Notes / Discovery details">
+          <Field label="Notes / Discovery details" htmlFor="lead-notes">
             <textarea
+              id="lead-notes"
               {...register("notes")}
               rows={3}
               placeholder="Enter context, project scope, or client requirements…"

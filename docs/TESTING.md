@@ -5,18 +5,22 @@ Four layers, each catching a different class of defect. Every gate runs in CI
 
 | Layer | Tool | Test cases | Command |
 | --- | --- | --- | --- |
-| Backend unit | JUnit 5 + Mockito + AssertJ | **267** | `cd backend; .\mvnw.cmd test` |
-| Backend integration | Spring Boot IT + **Testcontainers** (Postgres 17, Redis) | **27** (5 test classes) | `cd backend; .\mvnw.cmd verify` |
+| Backend unit | JUnit 5 + Mockito + AssertJ | **301** (28 classes) | `cd backend; .\mvnw.cmd test` |
+| Backend integration | Spring Boot IT + **Testcontainers** (Postgres 17, Redis) | **30** (5 test classes) | `cd backend; .\mvnw.cmd verify` |
 | Frontend unit | Vitest 5 + Testing Library (jsdom) | **25** (3 files) | `cd frontend; npm run test` |
-| Frontend E2E | **Playwright 1.65** (Chrome + Chromium, real backend) | **19** cases → **38** executions | `cd frontend; npm run e2e` |
+| Frontend E2E | **Playwright 1.65** (Chrome + Chromium, real backend) | **20** cases → **40** executions | `cd frontend; npm run e2e` |
 
-Full backend gate: `.\mvnw.cmd -B clean verify` → **BUILD SUCCESS, 0 failures**
-(294 tests: 267 unit + 27 integration).
+Full backend gate: `.\mvnw.cmd -B clean verify` → **BUILD SUCCESS, 331 tests, 0
+failures** (301 unit + 30 integration).
+
+> The counts above are read from the generated Surefire/Failsafe XML reports
+> (`backend/target/surefire-reports`, `backend/target/failsafe-reports`) — they
+> are not estimated.
 
 > **Test cases vs. executions.** Playwright runs every test case once per
-> browser project, so 19 test cases produce 38 executions (19 in `chrome`,
-> 19 in `chromium`). Both numbers are reported separately throughout the
-> documentation so a "38 passed" can never be mistaken for 38 distinct
+> browser project, so 20 test cases produce 40 executions (20 in `chrome`,
+> 20 in `chromium`). Both numbers are reported separately throughout the
+> documentation so a "40 passed" can never be mistaken for 40 distinct
 > scenarios.
 
 ## Backend unit tests (fast, no I/O)
@@ -42,6 +46,18 @@ Located under `backend/src/test/java/…` next to the code they cover:
   limit, recovery once Redis answers, concurrency, and a bounded counter map.
 - `LeadServiceTest` — lead lifecycle plus the assignment rule (a lead can
   only be assigned to an active member of the workspace).
+- `BillingServiceTest` — the Chapa webhook contract: signature validation,
+  server-side verification, amount/currency/reference mismatch, replay
+  protection and **state-downgrade protection** (an out-of-order webhook can
+  never cancel a paid subscription).
+- `SsrfAdversarialTest` — the crawler's SSRF defence against address
+  spelling tricks: IPv6 forms that embed an IPv4 address (`::127.0.0.1`,
+  6to4, Teredo), decimal/octal/hex loopback hosts, embedded credentials, a
+  redirect into a private network (every hop is re-validated) and an
+  oversized response.
+- `AiServiceTest` — the recommendation contract: the GET endpoint is a pure
+  read, generation is rate limited and mutually exclusive, and success and
+  failure are audited.
 - plus DTO/service edge cases (validation messages, state transitions).
 
 Rules: no database, no network; Mockito for collaborators; AssertJ
@@ -78,15 +94,23 @@ Two users × two organizations: cross-org PATCH → 404 (no existence leak),
 cross-org member operations → 404, privilege escalation → 403, last-owner
 demotion → 409.
 
-### `ModuleIsolationIT` (4 tests)
-Tenant isolation for the business modules (not just the core):
+### `ModuleIsolationIT` (7 tests)
+Tenant isolation for every organization-scoped module (not just the core).
+Each module is checked with the same shape: the data is created in
+organization A and then read, modified and deleted as a user of organization
+B — all attempts must be refused, while the owning workspace keeps working.
 
 - AI recommendations are scoped to the caller's own workspace — a second
   workspace gets 403/404 and never sees the foreign data;
 - the chatbot configuration is scoped for both reading and writing;
 - CRM leads are scoped: list, read, update and pipeline transitions all
   refuse a foreign lead;
-- a lead cannot be assigned to a user outside the organization.
+- a lead cannot be assigned to a user outside the organization;
+- websites are scoped: list, read, update and delete all refuse;
+- SEO audits are scoped: neither listing nor triggering a foreign audit works;
+- billing, campaigns, analytics, reports (including the CSV export),
+  members, invitations, audit logs and agency client relationships are all
+  refused for a foreign workspace.
 
 ### `OrganizationConcurrencyIT` (3 tests)
 Organization creation is a three-step transaction (slug → insert → owner
@@ -139,20 +163,20 @@ Run with coverage: `npm run test -- --coverage` (v8 provider, text+lcov).
 
 ## End-to-end tests (Playwright)
 
-19 test cases in 7 spec files, executed in **both** browser projects
-(`chrome` = real Google Chrome, `chromium` = bundled Chromium) → **38
+20 test cases in 8 spec files, executed in **both** browser projects
+(`chrome` = real Google Chrome, `chromium` = bundled Chromium) → **40
 executions**.
 
 | Spec | Cases | Covers |
 | --- | --- | --- |
 | `vertical-slice.spec.ts` | 4 | full owner journey, generic login error, client-side password policy, unauthenticated redirect |
-| `auth-routing.spec.ts` | 9 | the routing rules (new user → onboarding, existing user → workspace, authenticated visitor on `/login`/`/register`, `next` handling, open-redirect rejection, duplicate registration, reload, logout) |
+| `auth-routing.spec.ts` | 10 | the routing rules (new user → onboarding, existing user → workspace, authenticated visitor on `/login`/`/register`, `next` handling, open-redirect rejection, **recovery from a failed `/auth/me` after registration**, duplicate registration, reload, logout) |
 | `agency-lifecycle.spec.ts` | 1 | agency client linking, fail-closed on an unknown slug |
 | `ai-chatbot.spec.ts` | 1 | AI insights & bot surface |
 | `billing.spec.ts` | 1 | subscription & billing surface (ETB context) |
-| `crm-leads.spec.ts` | 1 | CRM pipeline + lead creation |
+| `crm-leads.spec.ts` | 1 | CRM pipeline + lead creation (fills the form by accessible label) |
 | `multi-tenant-isolation.spec.ts` | 1 | two accounts, two workspaces, no cross-visibility |
-| `seo-audit.spec.ts` | 1 | website registration + SEO audit view |
+| `seo-audit.spec.ts` | 1 | website registration **and a real audit**: the audit is triggered through the UI and the persisted row is read back from the API |
 
 ### The server under test
 
