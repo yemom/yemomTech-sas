@@ -13,6 +13,7 @@ import com.YemomBizGrow.common.exception.BadRequestException;
 import com.YemomBizGrow.common.exception.NotFoundException;
 import com.YemomBizGrow.membership.AccessControlService;
 import com.YemomBizGrow.membership.Permission;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -320,99 +321,104 @@ public class BillingService {
             throw new BadRequestException("Invalid webhook signature");
         }
 
+        // Parse first, and only the parsing: a payload we cannot read is a
+        // client error, while a failure while processing a well-formed payload
+        // is a server-side problem. Conflating the two produced the misleading
+        // "Malformed webhook payload" for real processing failures.
+        JsonNode root;
         try {
-            JsonNode root = objectMapper.readTree(rawBody);
-            String extractedRef = root.path("data").path("tx_ref").asText("");
-            final String webhookTxRef = extractedRef.isBlank() ? root.path("tx_ref").asText("") : extractedRef;
-
-            if (webhookTxRef.isBlank()) {
-                log.warn("Chapa webhook missing tx_ref in payload: {}", rawBody);
-                return;
-            }
-
-            PaymentTransaction tx = transactionRepository.findByTxRefForUpdate(webhookTxRef)
-                    .orElseGet(() -> transactionRepository.findByTxRef(webhookTxRef).orElse(null));
-            if (tx == null) {
-                log.warn("Chapa webhook received for unknown txRef: {}", webhookTxRef);
-                return;
-            }
-
-            // Webhook replay attack protection / idempotency & state downgrade prevention
-            if (tx.getStatus() == PaymentStatus.SUCCESS) {
-                log.info("Chapa webhook txRef {} already marked SUCCESS, skipping duplicate activation", webhookTxRef);
-                return;
-            }
-
-            // Server-side verification with Chapa before activating subscription
-            ChapaClient.ChapaVerifyResult verifyResult = chapaClient.verify(webhookTxRef);
-            if (!verifyResult.success() || !"success".equalsIgnoreCase(verifyResult.status())) {
-                log.warn("Chapa server verification failed for webhook txRef {}: {}", webhookTxRef, verifyResult.message());
-                tx.setStatus(PaymentStatus.FAILED);
-                tx.setFailureReason("Server verification failed: " + verifyResult.message());
-                transactionRepository.save(tx);
-                return;
-            }
-
-            // Fail-closed: require valid, non-null, exact amount from server verification
-            if (verifyResult.amount() == null || verifyResult.amount().compareTo(tx.getAmountEtb()) != 0) {
-                log.error("Server verified amount mismatch or missing for txRef {}: expected {} but got {}", webhookTxRef, tx.getAmountEtb(), verifyResult.amount());
-                tx.setStatus(PaymentStatus.FAILED);
-                tx.setFailureReason("Verified amount mismatch or missing");
-                transactionRepository.save(tx);
-                return;
-            }
-
-            // Fail-closed: require valid, non-blank, exact currency from server verification
-            if (verifyResult.currency() == null || !verifyResult.currency().equalsIgnoreCase(tx.getCurrency())) {
-                log.error("Server verified currency mismatch or missing for txRef {}: expected {} but got {}", webhookTxRef, tx.getCurrency(), verifyResult.currency());
-                tx.setStatus(PaymentStatus.FAILED);
-                tx.setFailureReason("Verified currency mismatch or missing");
-                transactionRepository.save(tx);
-                return;
-            }
-
-            // Fail-closed: verify matching txRef
-            if (verifyResult.txRef() == null || !verifyResult.txRef().equals(tx.getTxRef())) {
-                log.error("Server verified txRef mismatch for txRef {}: got {}", webhookTxRef, verifyResult.txRef());
-                tx.setStatus(PaymentStatus.FAILED);
-                tx.setFailureReason("Verified txRef mismatch");
-                transactionRepository.save(tx);
-                return;
-            }
-
-            // Fail-closed: verify provider transaction identity
-            if (verifyResult.chapaTransactionId() == null || verifyResult.chapaTransactionId().isBlank()) {
-                log.error("Server verified chapaTransactionId missing for txRef {}", webhookTxRef);
-                tx.setStatus(PaymentStatus.FAILED);
-                tx.setFailureReason("Verified provider transaction ID missing");
-                transactionRepository.save(tx);
-                return;
-            }
-
-            tx.setStatus(PaymentStatus.SUCCESS);
-            tx.setVerifiedAt(Instant.now());
-            tx.setChapaTransactionId(verifyResult.chapaTransactionId() != null ? verifyResult.chapaTransactionId() : root.path("data").path("reference").asText(webhookTxRef));
-            transactionRepository.save(tx);
-
-            OrganizationSubscription sub = subscriptionRepository.findByOrganizationId(tx.getOrganizationId())
-                    .orElseGet(() -> createDefaultFreeSubscription(tx.getOrganizationId()));
-
-            sub.setPlan(tx.getPlan());
-            sub.setStatus(SubscriptionStatus.ACTIVE);
-            sub.setCurrentPeriodStart(Instant.now());
-            sub.setCurrentPeriodEnd(Instant.now().plus(30, ChronoUnit.DAYS));
-            subscriptionRepository.save(sub);
-
-            recordBillingHistory(tx.getOrganizationId(), tx.getId(), sub.getId(), BillingEventType.PAYMENT_SUCCESS,
-                    "Webhook confirmed payment of " + tx.getAmountEtb() + " ETB for " + tx.getPlan().getName(),
-                    tx.getAmountEtb());
-
-            log.info("Chapa webhook successfully verified and applied payment for txRef: {}", webhookTxRef);
-
-        } catch (Exception e) {
-            log.error("Failed to parse Chapa webhook payload", e);
+            root = objectMapper.readTree(rawBody);
+        } catch (JsonProcessingException e) {
+            log.warn("Chapa webhook payload could not be parsed: {}", e.getMessage());
             throw new BadRequestException("Malformed webhook payload");
         }
+
+        String extractedRef = root.path("data").path("tx_ref").asText("");
+        final String webhookTxRef = extractedRef.isBlank() ? root.path("tx_ref").asText("") : extractedRef;
+
+        if (webhookTxRef.isBlank()) {
+            log.warn("Chapa webhook missing tx_ref in payload");
+            return;
+        }
+
+        PaymentTransaction tx = transactionRepository.findByTxRefForUpdate(webhookTxRef)
+                .orElseGet(() -> transactionRepository.findByTxRef(webhookTxRef).orElse(null));
+        if (tx == null) {
+            log.warn("Chapa webhook received for unknown txRef: {}", webhookTxRef);
+            return;
+        }
+
+        // Webhook replay attack protection / idempotency & state downgrade prevention
+        if (tx.getStatus() == PaymentStatus.SUCCESS) {
+            log.info("Chapa webhook txRef {} already marked SUCCESS, skipping duplicate activation", webhookTxRef);
+            return;
+        }
+
+        // Server-side verification with Chapa before activating subscription
+        ChapaClient.ChapaVerifyResult verifyResult = chapaClient.verify(webhookTxRef);
+        if (!verifyResult.success() || !"success".equalsIgnoreCase(verifyResult.status())) {
+            log.warn("Chapa server verification failed for webhook txRef {}: {}", webhookTxRef, verifyResult.message());
+            tx.setStatus(PaymentStatus.FAILED);
+            tx.setFailureReason("Server verification failed: " + verifyResult.message());
+            transactionRepository.save(tx);
+            return;
+        }
+
+        // Fail-closed: require valid, non-null, exact amount from server verification
+        if (verifyResult.amount() == null || verifyResult.amount().compareTo(tx.getAmountEtb()) != 0) {
+            log.error("Server verified amount mismatch or missing for txRef {}: expected {} but got {}", webhookTxRef, tx.getAmountEtb(), verifyResult.amount());
+            tx.setStatus(PaymentStatus.FAILED);
+            tx.setFailureReason("Verified amount mismatch or missing");
+            transactionRepository.save(tx);
+            return;
+        }
+
+        // Fail-closed: require valid, non-blank, exact currency from server verification
+        if (verifyResult.currency() == null || !verifyResult.currency().equalsIgnoreCase(tx.getCurrency())) {
+            log.error("Server verified currency mismatch or missing for txRef {}: expected {} but got {}", webhookTxRef, tx.getCurrency(), verifyResult.currency());
+            tx.setStatus(PaymentStatus.FAILED);
+            tx.setFailureReason("Verified currency mismatch or missing");
+            transactionRepository.save(tx);
+            return;
+        }
+
+        // Fail-closed: verify matching txRef
+        if (verifyResult.txRef() == null || !verifyResult.txRef().equals(tx.getTxRef())) {
+            log.error("Server verified txRef mismatch for txRef {}: got {}", webhookTxRef, verifyResult.txRef());
+            tx.setStatus(PaymentStatus.FAILED);
+            tx.setFailureReason("Verified txRef mismatch");
+            transactionRepository.save(tx);
+            return;
+        }
+
+        // Fail-closed: verify provider transaction identity
+        if (verifyResult.chapaTransactionId() == null || verifyResult.chapaTransactionId().isBlank()) {
+            log.error("Server verified chapaTransactionId missing for txRef {}", webhookTxRef);
+            tx.setStatus(PaymentStatus.FAILED);
+            tx.setFailureReason("Verified provider transaction ID missing");
+            transactionRepository.save(tx);
+            return;
+        }
+
+        tx.setStatus(PaymentStatus.SUCCESS);
+        tx.setVerifiedAt(Instant.now());
+        tx.setChapaTransactionId(verifyResult.chapaTransactionId());
+        transactionRepository.save(tx);
+
+        OrganizationSubscription sub = subscriptionRepository.findByOrganizationId(tx.getOrganizationId())
+                .orElseGet(() -> createDefaultFreeSubscription(tx.getOrganizationId()));
+
+        sub.setPlan(tx.getPlan());
+        sub.setStatus(SubscriptionStatus.ACTIVE);
+        sub.setCurrentPeriodStart(Instant.now());
+        sub.setCurrentPeriodEnd(Instant.now().plus(30, ChronoUnit.DAYS));
+        subscriptionRepository.save(sub);
+
+        recordBillingHistory(tx.getOrganizationId(), tx.getId(), sub.getId(), BillingEventType.PAYMENT_SUCCESS,
+                "Webhook confirmed payment of " + tx.getAmountEtb() + " ETB for " + tx.getPlan().getName(),
+                tx.getAmountEtb());
+
+        log.info("Chapa webhook successfully verified and applied payment for txRef: {}", webhookTxRef);
     }
 
     /**

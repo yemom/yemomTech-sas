@@ -402,4 +402,58 @@ class BillingServiceTest {
                 .isInstanceOf(BadRequestException.class)
                 .hasMessageContaining("Invalid webhook signature");
     }
+
+    @Test
+    @DisplayName("an out-of-order failure webhook cannot downgrade a completed payment")
+    void testWebhookCannotDowngradeSuccessfulPayment() {
+        // A paid subscription must not be cancelled by a later webhook whose
+        // verification now fails (a replayed, spoofed or out-of-order event).
+        // The transaction has to stay SUCCESS and the subscription untouched.
+        String txRef = "TX-HOOK-DOWNGRADE";
+        String payload = "{\"status\":\"failed\",\"data\":{\"tx_ref\":\"" + txRef + "\"}}";
+        PaymentTransaction tx = new PaymentTransaction();
+        tx.setId(UUID.randomUUID());
+        tx.setTxRef(txRef);
+        tx.setOrganizationId(orgId);
+        tx.setAmountEtb(new BigDecimal("999.00"));
+        tx.setCurrency("ETB");
+        tx.setStatus(PaymentStatus.SUCCESS);
+
+        when(chapaClient.validateWebhookSignature("valid-sig", payload)).thenReturn(true);
+        when(transactionRepository.findByTxRefForUpdate(txRef)).thenReturn(Optional.of(tx));
+
+        billingService.handleWebhook("valid-sig", payload);
+
+        assertThat(tx.getStatus()).isEqualTo(PaymentStatus.SUCCESS);
+        assertThat(tx.getFailureReason()).isNull();
+        verify(chapaClient, never()).verify(any());
+        verify(transactionRepository, never()).save(any(PaymentTransaction.class));
+        verify(subscriptionRepository, never()).save(any(OrganizationSubscription.class));
+    }
+
+    @Test
+    @DisplayName("a webhook for an unknown transaction reference is ignored")
+    void testWebhookForUnknownTransactionIsIgnored() {
+        String payload = "{\"status\":\"success\",\"data\":{\"tx_ref\":\"TX-UNKNOWN\"}}";
+        when(chapaClient.validateWebhookSignature("valid-sig", payload)).thenReturn(true);
+        when(transactionRepository.findByTxRefForUpdate("TX-UNKNOWN")).thenReturn(Optional.empty());
+        when(transactionRepository.findByTxRef("TX-UNKNOWN")).thenReturn(Optional.empty());
+
+        billingService.handleWebhook("valid-sig", payload);
+
+        verify(chapaClient, never()).verify(any());
+        verify(subscriptionRepository, never()).save(any(OrganizationSubscription.class));
+    }
+
+    @Test
+    @DisplayName("a webhook without a transaction reference is ignored")
+    void testWebhookWithoutTxRefIsIgnored() {
+        String payload = "{\"status\":\"success\"}";
+        when(chapaClient.validateWebhookSignature("valid-sig", payload)).thenReturn(true);
+
+        billingService.handleWebhook("valid-sig", payload);
+
+        verify(transactionRepository, never()).findByTxRefForUpdate(any());
+        verify(subscriptionRepository, never()).save(any(OrganizationSubscription.class));
+    }
 }

@@ -99,6 +99,56 @@ Only `health` and `info` are exposed. Logs are structured around the
 `traceId` from `RequestTraceFilter` (also returned to clients in error
 envelopes) — grep a user-reported `traceId` to find the full request story.
 
+## Database backup and restore
+
+`infrastructure/scripts/postgres-backup.sh` implements the whole procedure.
+
+```bash
+# Create a timestamped dump in ./backups (custom format, compressed)
+bash infrastructure/scripts/postgres-backup.sh backup
+
+# Restore a dump into a DIFFERENT database (the source is protected)
+bash infrastructure/scripts/postgres-backup.sh restore <file.dump> <target-db>
+
+# Full drill: backup -> restore into an isolated scratch database -> compare
+# every table -> drop the scratch database again
+bash infrastructure/scripts/postgres-backup.sh verify
+```
+
+The `verify` drill is what CI runs
+(`.github/workflows/ci.yml`, "Verify the database backup and restore
+procedure"), and it checks four things:
+
+1. **The safety guard** — restoring over the database the dump came from is
+   refused (the rule is checked in isolation, so no database is touched).
+2. **Dump integrity** — the archive is non-empty and `pg_restore --list`
+   finds its table data.
+3. **Data fidelity** — every table's row count in the restored copy equals
+   the source.
+4. **Schema usability** — the restored database carries a consistent Flyway
+   history (`flyway_schema_history` with successful migrations), so the
+   application can start against it without re-running migrations.
+
+The scratch database is dropped again at the end, so the drill leaves the
+application database untouched. **Never point `restore` at a production
+database**: the guard only protects the database named in `SOURCE_DB`.
+
+For a managed PostgreSQL (Render, RDS, Cloud SQL) use the provider's own
+snapshot/PITR facility and run the same drill against a restored copy — the
+script's `PG_CONTAINER`/`PG_HOST`/`PG_PORT` variables exist for that.
+
+### Recovery after an application failure
+
+1. Stop the application (the database is unaffected).
+2. Restore the most recent dump into an empty database and point the
+   application at it.
+3. Start the application; Flyway finds the restored `flyway_schema_history`
+   and applies only the migrations that are newer than the dump.
+4. Verify with `/actuator/health/readiness` and the dashboard counts.
+
+Redis holds no durable state (login throttling and the AI generation lock
+only), so it needs no backup — see the degradation notes in ADR-0004.
+
 ## Security checklist before going live
 
 - [ ] `SPRING_PROFILES_ACTIVE=prod`; dev profile cannot activate.
@@ -106,14 +156,17 @@ envelopes) — grep a user-reported `traceId` to find the full request story.
 - [ ] `CORS_ALLOWED_ORIGINS` = exact frontend origin(s), no wildcard.
 - [ ] `COOKIE_SECURE=true`, `COOKIE_SAME_SITE=None` for cross-site; verify
       the refresh cookie flags in browser dev tools.
-- [ ] `springdoc.api-docs.enabled=false`, `springdoc.swagger-ui.enabled=false`.
+- [ ] `springdoc.api-docs.enabled=false`, `springdoc.swagger-ui.enabled=false`
+      (already the default in the `prod` profile; startup refuses to boot
+      with them enabled).
 - [ ] TLS everywhere (platform terminator is fine); DB TLS required.
 - [ ] Postgres/Redis not published to the internet; strong passwords.
 - [ ] Rate limiting/`LOGIN_*` values reviewed; Redis failure mode
-      (fail-open) understood and accepted (ADR-0004).
+      understood — the login throttle degrades to a bounded in-process limit
+      and logs `SECURITY CONTROL DEGRADED` (alert on that marker).
 - [ ] `actuator` exposure limited to `health,info` (already default).
 - [ ] Backups: Postgres PITR/automated snapshots verified with a restore
-      drill.
+      drill (`postgres-backup.sh verify`).
 - [ ] `.env` never deployed; secrets injected by the platform.
 
 ## Rollback

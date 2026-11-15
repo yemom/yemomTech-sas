@@ -27,6 +27,9 @@ backend/*-output.txt
 frontend/*-output.txt
 frontend/*-results.txt
 
+# ---- Database backups (never commit) ----
+backups/
+
 # ---- Environment / secrets ----
 .env
 .env.*

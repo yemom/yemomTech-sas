@@ -175,6 +175,13 @@ jobs:
         env:
           E2E_BASE_URL: http://localhost:3001
 
+      - name: Verify the database backup and restore procedure
+        # Backs the running database up, restores it into an isolated scratch
+        # database and compares every table. The scratch database is dropped
+        # again; the application database is never modified.
+        run: bash infrastructure/scripts/postgres-backup.sh verify
+        working-directory: .
+
       - name: Upload Playwright report on failure
         if: failure()
         uses: actions/upload-artifact@v4
