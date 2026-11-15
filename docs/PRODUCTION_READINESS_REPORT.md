@@ -19,7 +19,7 @@ This report supersedes the previous version, which declared the application
 "PRODUCTION READY" while simultaneously documenting that 16 of 20 browser tests
 failed. That claim was not supported by evidence and has been corrected here:
 the browser suite now runs **38/38 green**, and the two production-blocking
-items that remain are stated explicitly in §8.
+items that remain are stated explicitly in §9.
 
 | Layer | Result | Evidence |
 | --- | --- | --- |
@@ -32,7 +32,7 @@ items that remain are stated explicitly in §8.
 | Browser E2E | **38 / 38** pass (19 cases × 2 browsers) | `frontend; npm run e2e` |
 | Docker stack | 4/4 services healthy | `docker compose up -d --build` |
 | Manual browser verification | performed | §5 |
-| External provider verification | **NOT performed** | §8 |
+| External provider verification | **NOT performed** | §9 |
 
 ---
 
@@ -175,7 +175,38 @@ real Redis, production frontend build.
 
 ---
 
-## 6. Docker verification
+## 6. Browser evidence
+
+Captured with `cd frontend; npm run e2e:evidence` (Playwright, real Chromium,
+against the running Docker stack). The screenshots are in `docs/evidence/`.
+
+| File | Shows |
+| --- | --- |
+| `01-register-form.png` | the registration form with a valid password |
+| `02-onboarding-after-registration.png` | `/onboarding` reached after registration, with the Ethiopian defaults (Country: Ethiopia, Currency: ETB) |
+| `03-workspace-dashboard.png` | `/workspace` showing **real persisted data**: the organization name, `Africa/Addis_Ababa · ETB`, Active members 1, Active websites 0, role OWNER |
+| `04-members.png` | the members table: `Evidence Owner (you)`, Business Owner, ACTIVE, with Suspend/Remove disabled for the owner |
+| `05-session-after-reload.png` | the session **survives a browser reload** (restored from the HttpOnly refresh cookie) |
+| `06-protected-route-after-logout.png` | after logout, `/workspace` is refused and redirected to `/login?next=%2Fworkspace` |
+
+The same run reports the network and console evidence:
+
+```
+api calls      : 10
+api POST calls : POST /api/v1/auth/register
+                  POST /api/v1/organizations
+                  POST /api/v1/auth/refresh      <- session restored from the cookie
+                  POST /api/v1/auth/logout
+console errors : none
+```
+
+**Every mutation is an XHR/fetch call.** There is no native HTML form
+submission any more — that was the visible symptom in the original browser
+log (`register?firstName=…` as a *document* request).
+
+---
+
+## 7. Docker verification
 
 ```
 $ docker compose up -d --build
@@ -197,7 +228,7 @@ and login against the containerised backend on 8080).
 
 ---
 
-## 7. Documentation reconciled
+## 8. Documentation reconciled
 
 All three documents now report the same verified numbers and the same
 commit SHA, and distinguish unit / integration / frontend-unit / browser-E2E /
@@ -212,7 +243,7 @@ reported separately, as are the four E2E browser projects' identity.
 
 ---
 
-## 8. Remaining limitations — what is NOT verified
+## 9. Remaining limitations — what is NOT verified
 
 These are the reasons the status is *staging*, not *production*.
 
@@ -268,7 +299,7 @@ assignment rules are covered; the adversarial-input surface is not.
 
 ---
 
-## 9. Exact commands and commit
+## 10. Exact commands and commit
 
 ```
 Backend   : cd backend;  .\mvnw.cmd clean verify      → BUILD SUCCESS, 271 unit + 27 IT
@@ -288,7 +319,7 @@ difference between the verified tree and `HEAD` is this document.
 
 ---
 
-## 10. Conclusion
+## 11. Conclusion
 
 YemomBizGrow has a **strong engineering foundation**: a well-structured
 modular monolith, a real migration-managed schema, refresh-token rotation
@@ -303,7 +334,6 @@ and configuration defects, now fixed and covered by regression tests.
 **The remaining gap is not code — it is verification against the real
 production environment and the real external providers**, plus operational
 readiness (backups, rollback, monitoring, load). Those require credentials and
-authorization that this exercise does not have, and they are stated as
-limitations rather than papered over.
+authorization that this exercise does not have, and they are stated as limitations rather than papered over.
 
 **Final status: READY FOR STAGING — PRODUCTION BLOCKED**
