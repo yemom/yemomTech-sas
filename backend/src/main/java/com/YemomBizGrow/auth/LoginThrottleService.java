@@ -2,6 +2,7 @@ package com.YemomBizGrow.auth;
 
 import com.YemomBizGrow.common.config.AppProperties;
 import com.YemomBizGrow.common.exception.TooManyRequestsException;
+import com.YemomBizGrow.common.observability.SecurityControlMetrics;
 import com.YemomBizGrow.common.util.TokenHasher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -77,6 +78,7 @@ public class LoginThrottleService {
 
     private final StringRedisTemplate redis;
     private final AppProperties properties;
+    private final SecurityControlMetrics metrics;
 
     /**
      * Degraded-mode counters: key -&gt; {count, windowStartMillis}.
@@ -85,15 +87,26 @@ public class LoginThrottleService {
     private final ConcurrentHashMap<String, long[]> fallbackCounters = new ConcurrentHashMap<>();
 
     public LoginThrottleService(StringRedisTemplate redis, AppProperties properties) {
-        this.redis = redis;
-        this.properties = properties;
+        this(redis, properties, null);
     }
 
-    /**
-     * Call before verifying credentials. Checks both email and IP limits.
-     *
-     * @throws TooManyRequestsException when the window is exhausted
-     */
+    public LoginThrottleService(StringRedisTemplate redis, AppProperties properties,
+                                SecurityControlMetrics metrics) {
+        this.redis = redis;
+        this.properties = properties;
+        this.metrics = metrics;
+    }
+
+    /** Record a degradation of the login throttle and publish the metric. */
+    private void degraded(String reason) {
+        log.warn("SECURITY CONTROL DEGRADED: Redis-backed login throttle unavailable ({}). "
+                + "Falling back to a conservative in-process limit; brute-force protection is reduced "
+                + "for this instance until Redis recovers.", reason);
+        if (metrics != null) {
+            metrics.degraded("login-throttle");
+        }
+    }
+
     public void precheck(String normalizedEmail) {
         precheck(normalizedEmail, null);
     }
@@ -121,9 +134,7 @@ public class LoginThrottleService {
         } catch (TooManyRequestsException e) {
             throw e;
         } catch (RuntimeException e) {
-            log.warn("SECURITY CONTROL DEGRADED: Redis-backed login throttle unavailable ({}). "
-                    + "Falling back to a conservative in-process limit; brute-force protection is reduced "
-                    + "for this instance until Redis recovers.", e.getMessage());
+            degraded(e.getMessage());
         }
         enforceFallbackLimit(normalizedEmail, clientIp);
     }
@@ -158,6 +169,9 @@ public class LoginThrottleService {
         } catch (RuntimeException e) {
             log.warn("SECURITY CONTROL DEGRADED: Redis-backed login throttle increment failed ({}). "
                     + "Counting the failure in the conservative in-process limiter instead.", e.getMessage());
+            if (metrics != null) {
+                metrics.degraded("login-throttle");
+            }
             incrementFallback(normalizedEmail, clientIp);
         }
     }
@@ -170,6 +184,9 @@ public class LoginThrottleService {
             }
         } catch (RuntimeException e) {
             log.warn("SECURITY CONTROL DEGRADED: Redis-backed login throttle reset failed ({}).", e.getMessage());
+            if (metrics != null) {
+                metrics.degraded("login-throttle");
+            }
         }
         // A successful login clears the degraded counter too, so a user who
         // mistyped their password a few times during an outage is not left

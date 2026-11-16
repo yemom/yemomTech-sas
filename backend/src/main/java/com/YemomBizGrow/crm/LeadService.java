@@ -15,6 +15,7 @@ import com.YemomBizGrow.crm.dto.PipelineSummaryResponse;
 import com.YemomBizGrow.crm.dto.PublicLeadCaptureRequest;
 import com.YemomBizGrow.crm.dto.TransitionStageRequest;
 import com.YemomBizGrow.crm.dto.UpdateLeadRequest;
+import com.YemomBizGrow.common.observability.SecurityControlMetrics;
 import com.YemomBizGrow.membership.AccessControlService;
 import com.YemomBizGrow.membership.MembershipService;
 import com.YemomBizGrow.membership.Permission;
@@ -61,6 +62,7 @@ public class LeadService {
     private final AuditService auditService;
     private final MembershipService membershipService;
     private final StringRedisTemplate redisTemplate;
+    private final SecurityControlMetrics metrics;
 
     public LeadService(
             LeadRepository leadRepository,
@@ -82,6 +84,20 @@ public class LeadService {
             AuditService auditService,
             MembershipService membershipService,
             @Autowired(required = false) StringRedisTemplate redisTemplate) {
+        this(leadRepository, activityRepository, organizationRepository, accessControlService, auditService,
+                membershipService, redisTemplate, null);
+    }
+
+    @Autowired
+    public LeadService(
+            LeadRepository leadRepository,
+            LeadActivityRepository activityRepository,
+            OrganizationRepository organizationRepository,
+            AccessControlService accessControlService,
+            AuditService auditService,
+            MembershipService membershipService,
+            @Autowired(required = false) StringRedisTemplate redisTemplate,
+            @Autowired(required = false) SecurityControlMetrics metrics) {
         this.leadRepository = leadRepository;
         this.activityRepository = activityRepository;
         this.organizationRepository = organizationRepository;
@@ -89,6 +105,7 @@ public class LeadService {
         this.auditService = auditService;
         this.membershipService = membershipService;
         this.redisTemplate = redisTemplate;
+        this.metrics = metrics;
     }
 
     /**
@@ -414,7 +431,11 @@ public class LeadService {
             } catch (TooManyRequestsException e) {
                 throw e;
             } catch (Exception e) {
-                log.warn("Redis lead rate limit failed, falling back to in-memory rate limiter: {}", e.getMessage());
+                log.warn("SECURITY CONTROL DEGRADED: Redis-backed lead rate limit failed ({}). "
+                        + "Falling back to the per-instance in-memory rate limiter.", e.getMessage());
+                if (metrics != null) {
+                    metrics.degraded("lead-rate-limit");
+                }
             }
         }
 

@@ -153,6 +153,63 @@ itself cannot rot into a no-op.
 
 ---
 
+## Monitoring & alerting
+
+### What the application emits
+
+| Signal | Where | Purpose |
+| --- | --- | --- |
+| Correlation `traceId` | `RequestTraceFilter` (and error envelopes) | Find every log line for one request |
+| `bizgrow.security.controls.degraded` counter | `/actuator/metrics` (exposed in dev/test) | Tells you a security control is running degraded |
+| `SECURITY CONTROL DEGRADED` log marker | application logs | Human-readable cause (Redis unreachable, etc.) |
+| `/actuator/health/readiness` | uptime probe | DB + Redis reachability |
+| `/actuator/health/liveness` | liveness probe | Process is alive |
+| `/actuator/health` | aggregate | Optional components (e.g. mail) included |
+
+### Degraded security controls — rules to add
+
+A degradation means the application stayed up but a security control weakened
+(in-process, per-instance, conservative limit). Alert on this rather than
+only logging it:
+
+```promql
+# Fires the moment any security control falls back to its in-process limiter.
+increase(bizgrow_security_controls_degraded_total[5m]) > 0
+```
+
+With a `control` label, alert per control:
+
+```promql
+increase(bizgrow_security_controls_degraded_total{control="login-throttle"}[5m]) > 0
+increase(bizgrow_security_controls_degraded_total{control="ai-generation-guard"}[5m]) > 0
+increase(bizgrow_security_controls_degraded_total{control="lead-rate-limit"}[5m]) > 0
+```
+
+Treat the first occurrence in 15 minutes as a warning and a continuing
+occurrence as a page — a sustained degradation means Redis (or the network in
+front of it) is down.
+
+### Operator runbook
+
+1. **Check Redis**: `docker compose ps redis`, `redis-cli -p 6637 ping`.
+2. **Check connectivity**: from the backend container, `redis-cli -h redis -p 6379 ping`.
+3. **If Redis is down**: restart it, or point `REDIS_HOST`/`REDIS_PORT` at the
+   backup instance. The degraded in-process limit keeps the system
+   brute-force-limited in the meantime (at most 5 login attempts / 15 min per
+   account / 20 per IP, per instance).
+4. **If Redis is up**: confirm the trendline returns to zero — the rate
+   counter keeps counting past events, the log shows the cause and the
+   recovery has already happened automatically.
+
+### Production endpoint exposure
+
+The `metrics` endpoint is exposed in the `dev`/`test` profiles for local
+inspection. **Production keeps `health,info` only.** Expose `metrics` in
+production only behind an internal network or an authenticated proxy — the
+counts are not secret but they are operational telemetry.
+
+---
+
 ## Database backup and restore
 
 `infrastructure/scripts/postgres-backup.sh` implements the whole procedure.

@@ -30,6 +30,14 @@ app:
       expose-dev-token: true
 
 management:
+  endpoints:
+    web:
+      exposure:
+        # The metrics endpoint is exposed in the development profile so the
+        # degraded-security-control counter (bizgrow.security.controls.degraded)
+        # can be read locally. Production keeps the surface minimal; expose it
+        # only behind an internal network or an authenticated proxy there.
+        include: health,info,metrics
   health:
     mail:
       # Local development has no SMTP server. Without this the mail indicator

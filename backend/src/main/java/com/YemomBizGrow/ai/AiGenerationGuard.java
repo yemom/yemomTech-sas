@@ -7,6 +7,8 @@ import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Component;
 
+import com.YemomBizGrow.common.observability.SecurityControlMetrics;
+
 import java.time.Duration;
 import java.util.Collections;
 import java.util.UUID;
@@ -57,6 +59,7 @@ public class AiGenerationGuard {
             Long.class);
 
     private final StringRedisTemplate redis;
+    private final SecurityControlMetrics metrics;
 
     /** Degraded-mode lock expiry (epoch millis) per organization. */
     private final ConcurrentHashMap<String, Long> localLocks = new ConcurrentHashMap<>();
@@ -64,7 +67,21 @@ public class AiGenerationGuard {
     private final ConcurrentHashMap<String, long[]> localCounters = new ConcurrentHashMap<>();
 
     public AiGenerationGuard(StringRedisTemplate redis) {
+        this(redis, null);
+    }
+
+    public AiGenerationGuard(StringRedisTemplate redis, SecurityControlMetrics metrics) {
         this.redis = redis;
+        this.metrics = metrics;
+    }
+
+    /** Record a degradation of the AI generation guard and publish the metric. */
+    private void degraded(String reason) {
+        log.warn("SECURITY CONTROL DEGRADED: Redis-backed AI generation guard unavailable ({}). "
+                + "Using the in-process limiter for this instance.", reason);
+        if (metrics != null) {
+            metrics.degraded("ai-generation-guard");
+        }
     }
 
     /**
@@ -83,8 +100,7 @@ public class AiGenerationGuard {
             // Redis answered: a generation really is in flight.
             return false;
         } catch (RuntimeException e) {
-            log.warn("SECURITY CONTROL DEGRADED: Redis-backed AI generation lock unavailable ({}). "
-                    + "Using the in-process lock for this instance.", e.getMessage());
+            degraded(e.getMessage());
             return acquireLocalLock(key);
         }
     }
@@ -96,6 +112,9 @@ public class AiGenerationGuard {
             redis.delete(key);
         } catch (RuntimeException e) {
             log.warn("SECURITY CONTROL DEGRADED: could not release the AI generation lock ({}).", e.getMessage());
+            if (metrics != null) {
+                metrics.degraded("ai-generation-guard");
+            }
         }
         localLocks.remove(key);
     }
@@ -111,8 +130,7 @@ public class AiGenerationGuard {
                     String.valueOf(3600));
             return count != null && count > MAX_GENERATIONS_PER_HOUR;
         } catch (RuntimeException e) {
-            log.warn("SECURITY CONTROL DEGRADED: Redis-backed AI generation rate limit unavailable ({}). "
-                    + "Using the in-process limiter for this instance.", e.getMessage());
+            degraded(e.getMessage());
             return isLocalRateLimited(key);
         }
     }
