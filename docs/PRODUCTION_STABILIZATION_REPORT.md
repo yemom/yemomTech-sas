@@ -2,10 +2,10 @@
 
 **Repository:** https://github.com/yemom/yemomTech-sas
 **Branch:** `main`
-**Verified commit:** `3fe5acd` (the tree this report describes; the report itself
+**Verified commit:** `28b053e` (the tree this report describes; the report itself
 is committed immediately afterwards)
 **Environment:** Windows 11 · JDK 21 · Node 22.15.1 · Docker 28.5.1 ·
-PostgreSQL 17 · Redis 7.4 · Chrome + Chromium
+PostgreSQL 17 · Redis 7.4 · Chrome + Chromium · two backend instances (8080/8091)
 
 ---
 
@@ -32,8 +32,14 @@ profile is now enforced end to end, the AI generation path is explicit and
 guarded, the Redis degradation policy is documented and tested, tenant
 isolation is now verified for **every** organization-scoped module, Node is
 standardised, the browser suite no longer skips assertions, the CRM form is
-accessible, the database has a **verified** backup/restore procedure, and CI
-runs the browser suite and a restore drill on every push.
+accessible, the database has a **verified** backup/restore procedure, CI runs
+the browser suite and a restore drill on every push, the **dependency gate
+now fails the pipeline on a known CVE** (instead of printing a warning), the
+published images are gated on the tests, the browser suite and the
+dependency scan, and the six follow-up actions requested by the reviewer —
+dependency scanning, image-release gating, adversarial AI testing,
+degraded-control monitoring, live provider verification and load/failure
+testing — are done or explicitly tracked (§6).
 
 **Every automated gate is green**, and the numbers below come from the
 generated test reports, not from estimates.
@@ -43,15 +49,16 @@ generated test reports, not from estimates.
 ## 2. Exact commit SHA
 
 ```
-HEAD                3fe5acd  docs: reconcile the test counts with the generated reports
-65ad1b7  fix(security): close two SSRF bypasses in the SEO crawler
-7683f42  test(security): verify tenant isolation across every organization-scoped module
-95e3fc3  feat(ai): make recommendation generation an explicit POST action
+HEAD                28b053e  test(ops): add load harness and the multi-instance Redis failure drill
+6b8e4c1  feat(observability): expose degraded security controls as a metric
+f733e6d  test(security): add adversarial AI and tenant-isolation tests
+4cf41f1  ci: make the dependency scan a real gate and gate the image publishing
 3fe5acd  docs: reconcile the test counts with the generated reports
+65ad1b7  fix(security): close two SSRF bypasses in the SEO crawler
 ```
 
 (The list is ordered newest-first in the repository; the SHA verified by the
-runs in §8 is `3fe5acd`.)
+runs in §8 is `28b053e`.)
 
 ---
 
@@ -260,16 +267,16 @@ docs/evidence/*.png
 | 4. Config consistency | **Already correct** — verified across `next.config.ts`, the API client, `.env.example`, Compose, CI, Playwright and Spring CORS; the one canonical URL is guarded by a unit test |
 | 5. Node/Java | **Fixed** — Node **22 LTS** everywhere (was 22 in the docs, 20 in CI and Docker); Java 21 unchanged; `engines` added; reproducible installs via `npm ci` |
 | 6. AI service | **Done** — GET is a pure read; generation is an explicit, guarded, rate-limited, audited POST |
-| 7. Redis & rate limiting | **Done** — explicit documented policy; bounded local fallback; `SECURITY CONTROL DEGRADED` marker; outage, recovery, concurrency and bounding tested. Multi-instance behaviour is the Redis-shared path (documented, not separately testable locally) |
+| 7. Redis & rate limiting | **Done** — explicit documented policy; bounded local fallback; `SECURITY CONTROL DEGRADED` marker; outage, recovery, concurrency and bounding tested. Multi-instance behaviour verified with the two-instance drill |
 | 8. Multi-tenant security | **Done** — every organization-scoped module verified for cross-tenant read/update/delete/export |
 | 9. Transactions & concurrency | **Done** — organization creation, slug uniqueness, no orphan rows, lead assignment, webhook state machine |
 | 10. SEO crawler SSRF | **Fixed** — two bypasses closed; 21 adversarial tests including redirect re-validation |
-| 11. Payments & providers | **Done** for Chapa (idempotency, replay, downgrade, mismatch, unknown ref). **Blocked** for live Google/OpenAI/SMTP verification (§11) |
+| 11. Payments & providers | **Done** for Chapa (idempotency, replay, downgrade, mismatch, unknown ref). **Blocked** for live Google/OpenAI/SMTP verification (§11.1) — the harness (`verify-providers.mjs`) and the manual checklist are in place, but no staging credentials are available |
 | 12. Playwright & Vitest | **Done** — the conditional SEO test now asserts; the CRM test uses accessible labels; the audit row is verified in the API; `auth-routing.spec.ts` added |
 | 13. Frontend quality & a11y | **Done** for this cycle — the CRM form's label association (the concrete finding); error/loading/empty states and duplicate-submission prevention were already in place |
-| 14. CI/CD & Docker | **Done** — E2E job, backup drill job, dependency-vulnerability scan, SHA-based image tags, health checks on the real readiness endpoint |
+| 14. CI/CD & Docker | **Done** — E2E job; dependency gate that actually fails the pipeline (`audit-policy*`, OWASP `fail-on-severity: HIGH`, `dependency-review-action` on PRs); image jobs gated on the full test+E2E+scan chain; SHA-based tags; health checks on the real readiness endpoint |
 | 15. Backup & restore | **Done** — `postgres-backup.sh` with a verified drill (guard, integrity, row-count equality, Flyway history) |
-| 16. Performance & observability | **Partially done** — the correlation `traceId`, the readiness/liveness probes and the degraded-mode markers are in place; load testing and dashboard wiring remain (§11) |
+| 16. Performance & observability | **Done (load)** — `load-test.mjs` (354 req/s, p95 136 ms locally); `SecurityControlMetrics` counter tagged per control; PromQL alert rules and operator runbook in `DEPLOYMENT.md` (§11.4) |
 | 17. Documentation | **Done** — the counts now come from the generated XML reports; `TESTING.md`, `DEVELOPMENT_SETUP.md`, `DEPLOYMENT.md` and this report agree |
 | 18. All tests executed | **Done** — §8 |
 | 19–20. Acceptance & report | This document |
@@ -294,9 +301,30 @@ docs/evidence/*.png
 ### Backend — `cd backend; .\mvnw.cmd clean verify`
 
 ```
-[INFO] Tests run: 301, Failures: 0, Errors: 0, Skipped: 0   (surefire: 28 classes)
+[INFO] Tests run: 310, Failures: 0, Errors: 0, Skipped: 0   (surefire: 30 classes)
 [INFO] Tests run:  30, Failures: 0, Errors: 0, Skipped: 0   (failsafe:  5 classes)
 [INFO] BUILD SUCCESS
+```
+
+A latent crash found and fixed in this step: Spring could not construct
+`AiGenerationGuard` and `LoginThrottleService` (two constructors, none
+annotated `@Autowired` — "No default constructor found"), and `LeadService`
+had two `@Autowired` constructors (forbidden). The first crash-looped the
+second backend instance in the Docker stack; the full integration suite
+caught the `LeadService` variant once unit tests had passed. Both beans now
+have an explicit autowired constructor.
+
+### Load and multi-instance drill
+
+```
+node infrastructure/scripts/load-test.mjs --url=http://localhost:8080/actuator/health/readiness \
+    --requests=500 --concurrency=25
+-> 354.6 req/s, p50 37.7 ms, p95 136 ms, p99 372 ms, 0 errors
+
+bash infrastructure/scripts/redis-failure-drill.sh
+-> primary (8080) and secondary (8091) both healthy while Redis was down;
+-> 5 wrong passwords refused (401), 6th throttled (429);
+-> Redis restarted; instances recover; drill PASSED.
 ```
 
 Counts read from `backend/target/surefire-reports/TEST-*.xml` and
@@ -386,26 +414,49 @@ It does not prove that a real transaction, consent or message succeeds.
 
 **Required action:** run the verification checklist in a staging environment
 with real credentials, and record the results. This needs credentials that
-this exercise does not have.
+this exercise does not have. The harness is in place:
+`infrastructure/scripts/verify-providers.mjs` checks each provider
+independently (OpenAI `/v1/models`, Chapa transaction verify, Google OAuth
+client format/redirect URI, SMTP reachability) and prints PASS/SKIP/PARTIAL/FAIL
+per provider; the manual staging checklist is in `DEPLOYMENT.md`, "Live
+provider verification". On this machine all four report SKIP.
 
-### 11.2 NOT FIXED — adversarial AI input
+### 11.2 FIXED — adversarial AI input
 
-Prompt injection through website content and user messages is **not** tested
-end to end. The offline recommendation provider works only from persisted
-data and cannot fabricate metrics, and the chat path has a 15 s timeout with
-a tested fallback — but the injection surface itself is untested.
+`AiSecurityTest` (7 tests) now covers the two properties that matter: the
+recommendation path is structurally prompt-free (decisions derive from counts,
+so hostile website content cannot change category or priority — verified with
+the real provider), and the chat path is prompt-shaped, so its contract is
+pinned: the visitor's message is never merged into the system instructions,
+untrusted content is stored as data, each organization answers from its own
+configuration, a foreign session id yields a separate conversation, and
+recommendations are returned per organization.
 
-### 11.3 NOT FIXED — load and failure testing
+The live OpenAI path remains unproven without a credential — see §11.1.
 
-No load test, no chaos test, no multi-instance test. The distributed limiter
-is Redis-backed by design, but that has not been exercised with two backend
-instances.
+### 11.3 FIXED — load and multi-instance failure testing
 
-### 11.4 NOT FIXED — monitoring and alerting wiring
+- `infrastructure/scripts/load-test.mjs` measures throughput, latency
+  percentiles and error rate; locally the stack serves 500 requests at 354
+  req/s with 0% errors (p95 136 ms).
+- `infrastructure/scripts/redis-failure-drill.sh` + the optional `scale`
+  compose profile run two backend instances that share PostgreSQL and Redis.
+  Measured: both instances stay up during a Redis outage (readiness 200/200),
+  the login throttle still refuses brute force on the degraded in-process
+  limiter (401 ×5 then 429), and both instances recover automatically when
+  Redis returns. Drill PASSED.
 
-The application emits the signals (`traceId` correlation, the
-`SECURITY CONTROL DEGRADED` marker, readiness/liveness probes); turning them
-into pages and dashboards belongs to the platform, not to this repository.
+### 11.4 FIXED — monitoring and alerting (application signals)
+
+Each security control that can degrade now publishes
+`bizgrow.security.controls.degraded{control=...}` through Micrometer. The
+metric endpoint requires a bearer token (401 unauthenticated). Measured: the
+twelve throttled logins from the actual drill are visible with a token,
+invisible without one.
+
+What this repository does not do is wire the alerts into a paging system:
+`DEPLOYMENT.md` documents the PromQL rules and the operator runbook —
+that is platform work.
 
 ### 11.5 Accepted trade-off — the degraded login throttle is per instance
 
@@ -456,14 +507,16 @@ and the restore drill used an isolated scratch database that it dropped again.
 
 1. **Staging verification of the external providers** (§11.1) — the only
    thing standing between this codebase and a production decision.
-2. **Adversarial AI input tests** (§11.2) — prompt injection through website
-   content and chat messages.
-3. **Load test against staging** (§11.3) — including the crawler, the AI
-   generation path and two backend instances.
-4. **Alerting on the degraded-mode markers** (§11.4).
-5. **Multi-instance test of the distributed limiter** (§11.3).
-6. **Database index review** against the production query mix once real
-   traffic exists.
+2. **Database index review** against the production query mix once real
+   traffic exists (§11.3 load baseline).
+3. **Load test against staging** with a realistic request mix — this machine
+   ran the local baseline (354 req/s, p95 136 ms); staging sizing and the
+   crawler/AI paths need a real measurement.
+4. **Alerting and dashboard wiring** (§11.4) — the metric exists; the
+   platform that pages on it does not, yet.
+5. **Activate the release gate** — the image jobs now require the tests, the
+   browser suite and the dependency scan to pass before an image is
+   published; confirm that the registry policy matches.
 
 ---
 
@@ -479,22 +532,25 @@ NOT READY FOR DEPLOYMENT
 
 Every automated gate in this repository passes:
 
-- 301 backend unit tests, 30 backend integration tests against real
-  PostgreSQL and Redis — **331, zero failures**;
+- 310 backend unit tests, 30 backend integration tests against real
+  PostgreSQL and Redis — **340, zero failures**;
 - 25 frontend unit tests, typecheck, lint and the production build — all
   green;
 - 40 browser executions (20 real scenarios × Chrome and Chromium) against a
   real backend and a real database — **all green**;
 - the Docker stack builds, starts and reports healthy;
-- the database backup/restore drill passes.
+- the database backup/restore drill passes;
+- the multi-instance Redis failure drill passes;
+- the load harness passes (354 req/s, 0% errors locally);
+- the degraded-control metric and the CI dependency gates are in place.
 
 The code is in a state that can be deployed to staging. It cannot honestly be
 called **PRODUCTION READY**, because the two things that only a real
 environment can prove — the live external providers (§11.1) and the
 production environment itself (§11.6) — remain unverified, and the load and
-adversarial-AI gaps (§11.2, §11.3) are open. Claiming otherwise would repeat
+alert-wiring work (§13) is not complete. Claiming otherwise would repeat
 the mistake this report was written to correct.
 
 ---
 
-*Verification performed 14–15 November 2026 against commit `3fe5acd`.*
+*Verification performed 15–16 November 2026 against commit `28b053e`.*

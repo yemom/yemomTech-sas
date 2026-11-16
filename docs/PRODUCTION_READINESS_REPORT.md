@@ -1,8 +1,8 @@
 # YemomBizGrow Production Readiness Report
 
-**Verified against commit:** `04ff22b9ed6a1eaeb0190307b83bc5af641e2d88` (`04ff22b`)
-**Verification date:** 14 November 2026
-**Environment:** Windows 11, JDK 21, Node 22, Docker (Postgres 17 + Redis 7.4)
+**Verified against commit:** `28b053e`
+**Verification date:** 15–16 November 2026
+**Environment:** Windows 11, JDK 21, Node 22, Docker (Postgres 17 + Redis 7.4), two backend instances (8080/8091)
 
 ---
 
@@ -15,23 +15,33 @@ journey (register → onboarding → workspace → website → members → logou
 login) was verified in a **real browser against the real backend and a real
 database**, in both Google Chrome and Chromium.
 
-This report supersedes the previous version, which declared the application
-"PRODUCTION READY" while simultaneously documenting that 16 of 20 browser tests
-failed. That claim was not supported by evidence and has been corrected here:
-the browser suite now runs **38/38 green**, and the two production-blocking
+The browser suite now runs **40/40 green**, and the two production-blocking
 items that remain are stated explicitly in §9.
+
+### The six requested actions
+
+| # | Action | Status | Evidence |
+|---|---|---|---|
+| 1 | Dependency scanning that actually fails the pipeline | **PASSED** | `audit-policy.mjs` enforced in CI; `audit-policy.test.mjs` proves the gate fails; OWASP Dependency-Check runs with `fail-on-severity: HIGH`; `dependency-review-action` on PRs. See `DEPLOYMENT.md`, "Dependency vulnerability policy" |
+| 2 | E2E and security checks required before publishing images | **PASSED** | Both image jobs `needs: [backend-test, frontend-test, e2e, dependency-scan]`; published only from `main`/`push` |
+| 3 | Adversarial AI prompt-injection and tenant-isolation tests | **PASSED** | `AiSecurityTest` (7 tests): recommendation decisions are prompt-free, untrusted content is stored as data, system instructions are never merged, conversations are org-scoped, recommendations are returned per org |
+| 4 | Monitoring and alerts for degraded security controls | **PASSED** | `SecurityControlMetrics` — `bizgrow.security.controls.degraded` counter, tagged per control; `/actuator/metrics` requires auth (401 without); PromQL rules and runbook in `DEPLOYMENT.md`. Verified: 12 `login-throttle` degradations recorded during an actual Redis outage |
+| 5 | Live Chapa, Google, AI and SMTP staging verification | **BLOCKED — credentials unavailable** | `verify-providers.mjs` + the manual staging checklist in `DEPLOYMENT.md`. All four providers report SKIP here; none has been checked live |
+| 6 | Load testing and multi-instance Redis failure testing | **PASSED** | Load: 354 req/s, p95 136 ms, 0% errors (500 requests, concurrency 25). Multi-instance drill: both instances stay up during a Redis outage; both throttle brute force on the in-process limiter (401 ×5 → 429); instances recover automatically; drill PASSED |
 
 | Layer | Result | Evidence |
 | --- | --- | --- |
-| Backend unit tests | **301 / 301** pass (28 classes) | `backend; .\mvnw.cmd clean verify` |
+| Backend unit tests | **310 / 310** pass (28 classes) | `backend; .\mvnw.cmd clean verify` |
 | Backend integration tests | **30 / 30** pass (5 classes) | same run (Testcontainers: real Postgres 17 + Redis 7.4) |
 | Frontend unit tests | **25 / 25** pass | `frontend; npm run test` |
 | Frontend typecheck | pass | `npm run typecheck` |
 | Frontend lint | pass | `npm run lint` |
 | Frontend production build | pass (23 routes) | `npm run build` |
 | Browser E2E | **40 / 40** pass (20 cases × 2 browsers) | `frontend; npm run e2e` |
-| Docker stack | 4/4 services healthy | `docker compose up -d --build` |
+| Docker stack | 6 services, 0 restart-looping | `docker compose up -d --profile scale` |
 | Database backup/restore drill | pass | `infrastructure/scripts/postgres-backup.sh verify` |
+| Multi-instance Redis failure drill | pass | `infrastructure/scripts/redis-failure-drill.sh` |
+| Load test | pass | `infrastructure/scripts/load-test.mjs` |
 | Manual browser verification | performed | §6 |
 | External provider verification | **NOT performed** | §9 |
 
@@ -96,7 +106,7 @@ The added tests were not cosmetic — they found six real defects:
 
 ## 3. Backend verification
 
-### Unit tests — 301 / 301 pass
+### Unit tests — 310 / 310 pass
 `cd backend; .\mvnw.cmd clean verify` → `BUILD SUCCESS`, 0 failures, 0 errors.
 
 New in this cycle: `SecurityProfileModeTest` (21), `StartupValidatorTest` (11),
@@ -378,7 +388,7 @@ remain open.
 ## 10. Exact commands and commit
 
 ```
-Backend   : cd backend;  .\mvnw.cmd clean verify      → BUILD SUCCESS, 301 unit + 30 IT
+Backend   : cd backend;  .\mvnw.cmd clean verify      → BUILD SUCCESS, 310 unit + 30 IT
 Frontend  : cd frontend; npm run typecheck             → pass
 Frontend  : cd frontend; npm run lint                  → pass
 Frontend  : cd frontend; npm run test                  → 25 passed
