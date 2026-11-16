@@ -99,6 +99,84 @@ Only `health` and `info` are exposed. Logs are structured around the
 `traceId` from `RequestTraceFilter` (also returned to clients in error
 envelopes) — grep a user-reported `traceId` to find the full request story.
 
+## Live provider verification (staging)
+
+All automated tests prove that the integration code is **correct against
+controlled responses**. None of them proves that a real provider accepts a
+real request. That can only be done in staging with real credentials, and it
+is a release checklist, not a unit test.
+
+`infrastructure/scripts/verify-providers.mjs` automates the parts that can be
+automated, and reports each provider as `PASS`, `SKIP`, `PARTIAL` or `FAIL`.
+It never sends email, never initializes a payment and never modifies state —
+checks that require a human to complete the flow are marked `PARTIAL`.
+
+```bash
+OPENAI_API_KEY=sk-... CHAPA_SECRET_KEY=... CHAPA_TEST_TXREF=... \
+  GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=... GOOGLE_REDIRECT_URI=... \
+  SPRING_MAIL_HOST=... SPRING_MAIL_PORT=587 SPRING_MAIL_USERNAME=... SPRING_MAIL_PASSWORD=... \
+  node infrastructure/scripts/verify-providers.mjs
+```
+
+**Current status: the staging provider checks have NOT been run.**
+No staging credentials are available in this environment, so every check
+reports `SKIP`. Do not treat the absence of a failure as a pass — it means
+nothing has been checked yet.
+
+### Manual staging checklist
+
+For each provider, complete **all** of these before production approval.
+Record the results (date, operator, outcome) in the release ticket.
+
+**OpenAI (AI provider)**
+1. Set `OPENAI_API_KEY` in the staging environment.
+2. Run the harness — it must report PASS.
+3. In the staging UI, open AI Insights and trigger "Generate fresh insights";
+   confirm the reply appears and is grounded in the organization's own data.
+4. Confirm an abnormally long chat conversation still answers within the
+   timeout (the provider has a 15 s deadline) and that the fallback path is
+   exercised when the key is removed.
+
+**Chapa (billing)**
+1. Use the Chapa **sandbox** key and a test transaction in staging.
+2. Run the harness with `CHAPA_TEST_TXREF=<sandbox txRef>` — it must report
+   PASS, i.e. Chapa accepted the secret key and returned the transaction.
+3. Complete a real sandbox checkout end to end in the staging UI.
+4. Verify the transaction appears as `SUCCESS` in PostgreSQL, the webhook
+   fired, and the subscription was activated once — then replay the webhook
+   and confirm it is **not** applied a second time.
+5. Verify amount/currency mismatches are rejected and produce `FAILED` with a
+   reason.
+
+**Google OAuth (analytics)**
+1. Set `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` /
+   `GOOGLE_REDIRECT_URI` in staging, with the redirect URI whitelisted in
+   the Google Cloud console.
+2. Run the harness — client id format and redirect URI must be valid.
+3. Complete the OAuth flow in the staging UI: connect a Google account,
+   confirm the access token is stored encrypted, the scopes are correct, and
+   the dashboard shows real analytics data for that account.
+4. Revoke the token in Google's console, reload the dashboard and confirm the
+   application detects the revocation and prompts to reconnect — not a crash.
+
+**SMTP (email)**
+1. Set `SPRING_MAIL_HOST` / `SPRING_MAIL_PORT` / `SPRING_MAIL_USERNAME` /
+   `SPRING_MAIL_PASSWORD` in staging.
+2. Run the harness — the SMTP server must be reachable from the backend and
+   the credentials accepted for authenticated SMTP submission.
+3. Send a real test email in staging (register a new user and verify the
+   address, or use the password-reset flow) and confirm delivery.
+4. Confirm the message is not marked as spam and links point at the staging
+   frontend, not localhost.
+
+### What "done" looks like
+
+`verify-providers.mjs` exits 0, and the four manual checklists above are
+completed and recorded. Until both happen, the status remains
+**READY FOR STAGING — PRODUCTION BLOCKED**.
+
+---
+
 ## Dependency vulnerability policy
 
 The pipeline **fails** on a known vulnerability — it does not merely warn.
@@ -153,6 +231,36 @@ itself cannot rot into a no-op.
 
 ---
 
+## Load testing
+
+`infrastructure/scripts/load-test.mjs` is a dependency-free load harness used
+for this stack. Example:
+
+```bash
+node infrastructure/scripts/load-test.mjs \
+  --url=http://localhost:8080/actuator/health/readiness \
+  --requests=500 --concurrency=25
+```
+
+Measured locally (development profile, single instance, 500 requests,
+concurrency 25):
+
+```
+throughput    : 354.6 req/s
+latency mean  : 53.3 ms
+latency p50   : 37.7 ms
+latency p95   : 135.9 ms
+latency p99   : 371.8 ms
+failed        : 0 (0.00%)
+```
+
+The frontend (Next.js standalone) serves 100 requests at concurrency 10
+without errors (p50 ≈ 74 ms). These numbers characterise the **development**
+stack only and are a starting baseline, not a capacity claim — the
+production sizing question is answered by load-testing the staging stack with
+realistic request mixes (see "Remaining work" in
+`docs/PRODUCTION_STABILIZATION_REPORT.md`).
+
 ## Monitoring & alerting
 
 ### What the application emits
@@ -204,9 +312,58 @@ front of it) is down.
 ### Production endpoint exposure
 
 The `metrics` endpoint is exposed in the `dev`/`test` profiles for local
-inspection. **Production keeps `health,info` only.** Expose `metrics` in
-production only behind an internal network or an authenticated proxy — the
-counts are not secret but they are operational telemetry.
+inspection. **Production keeps `health,info` only.** In every profile the
+endpoint requires a bearer token — it is not in the anonymous allowlist. An
+unauthenticated scrape returns 401. Scrape it with a monitoring token or from
+an internal network protected by an authenticating proxy.
+
+The full chain was verified on this stack:
+
+```
+$ curl -H "Authorization: Bearer <token>" \
+       http://localhost:8091/actuator/metrics/bizgrow.security.controls.degraded
+
+{"name":"bizgrow.security.controls.degraded",
+ "description":"How often a security control fell back to its in-process limiter",
+ "measurements":[{"statistic":"COUNT","value":12.0}],
+ "availableTags":[{"tag":"control","values":["login-throttle"]}]}
+
+$ curl http://localhost:8091/actuator/metrics/bizgrow.security.controls.degraded   # no token
+401 Unauthorized
+```
+
+### Multi-instance Redis failure drill
+
+`infrastructure/scripts/redis-failure-drill.sh` proves the degraded mode and
+the recovery across two backend instances that share PostgreSQL and Redis:
+
+```
+$ bash infrastructure/scripts/redis-failure-drill.sh
+...
+  attempt 6 -> HTTP 429
+second instance correctly throttled the brute-force attempt
+primary (8080) readiness: HTTP 200
+secondary (8091) readiness: HTTP 200
+DRILL PASSED
+```
+
+What the drill establishes:
+
+1. a second instance runs side by side with the first on the same database
+   and the same Redis;
+2. when Redis goes down, **both** instances stay up (readiness 200/200);
+3. the login throttle degrades to its in-process limiter on **both**
+   instances — five wrong passwords are refused with 401, the sixth with
+   429, on the instance that was brute-forced;
+4. Redis is restarted and the primary instance recovers by itself;
+5. the degraded-control counter (`bizgrow.security.controls.degraded`,
+   tag `control=login-throttle`) recorded the twelve throttled attempts;
+   readable with a token, 401 without.
+
+Prerequisites: Docker, the compose stack, and a free host port (the drill
+publishes the second instance on 8091; change `SECONDARY_URL` if that port is
+taken). The drill registers a throwaway account and performs failed logins
+against it — never run it against production.
 
 ---
 

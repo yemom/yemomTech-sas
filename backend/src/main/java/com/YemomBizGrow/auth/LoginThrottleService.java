@@ -90,6 +90,7 @@ public class LoginThrottleService {
         this(redis, properties, null);
     }
 
+    @org.springframework.beans.factory.annotation.Autowired
     public LoginThrottleService(StringRedisTemplate redis, AppProperties properties,
                                 SecurityControlMetrics metrics) {
         this.redis = redis;

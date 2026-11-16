@@ -75,7 +75,6 @@ public class LeadService {
                 membershipService, null);
     }
 
-    @Autowired
     public LeadService(
             LeadRepository leadRepository,
             LeadActivityRepository activityRepository,

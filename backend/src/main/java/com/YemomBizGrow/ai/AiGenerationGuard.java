@@ -70,6 +70,7 @@ public class AiGenerationGuard {
         this(redis, null);
     }
 
+    @org.springframework.beans.factory.annotation.Autowired
     public AiGenerationGuard(StringRedisTemplate redis, SecurityControlMetrics metrics) {
         this.redis = redis;
         this.metrics = metrics;
