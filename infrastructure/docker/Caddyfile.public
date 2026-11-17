@@ -1,0 +1,27 @@
+# =============================================================
+# YemomBizGrow — Public ACME TLS-terminating reverse proxy
+#
+# Prerequisite:
+#   1. DNS A/AAAA records for app.<domain> and api.<domain> point to this server.
+#   2. Ports 80 and 443 are open in the firewall / security group.
+#
+# Caddy automatically:
+#   1. Solves ACME HTTP-01 and TLS-ALPN-01 challenges on ports 80/443.
+#   2. Issues public, trusted TLS certificates (Let's Encrypt / ZeroSSL).
+#   3. Renews certificates automatically every 60 days.
+#   4. Redirects all plain HTTP (port 80) requests to HTTPS (port 443).
+#   5. Proxies app traffic to frontend:3000 and API traffic to backend:8080.
+# =============================================================
+{
+	admin off
+}
+
+{$STAGING_APP_HOST} {
+	encode zstd gzip
+	reverse_proxy frontend:3000
+}
+
+{$STAGING_API_HOST} {
+	encode zstd gzip
+	reverse_proxy backend:8080
+}

@@ -124,12 +124,14 @@ services:
       STAGING_APP_HOST: ${STAGING_APP_HOST:?set STAGING_APP_HOST}
       STAGING_API_HOST: ${STAGING_API_HOST:?set STAGING_API_HOST}
     volumes:
-      - ./infrastructure/docker/Caddyfile.staging:/etc/caddy/Caddyfile:ro
+      - ${STAGING_CADDYFILE:-./infrastructure/docker/Caddyfile.staging}:/etc/caddy/Caddyfile:ro
       - staging-caddy-data:/data
       - staging-caddy-config:/config
     ports:
-      # App and API each get their own HTTPS listener, mirroring the
-      # production topology (app and API on different origins).
+      # Standard public HTTP/HTTPS ports (required for ACME HTTP-01 challenge and public routing)
+      - "${STAGING_HTTP_PORT:-80}:80"
+      - "${STAGING_HTTPS_PORT:-443}:443"
+      # Dedicated ports for port-based local rehearsal (e.g. https://localhost:4443)
       - "${STAGING_HTTPS_APP_PORT:-4443}:4443"
       - "${STAGING_HTTPS_API_PORT:-8443}:8443"
 

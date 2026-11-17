@@ -62,7 +62,12 @@ export default function ForgotPasswordPage() {
           </div>
         ) : (
           <form
-            onSubmit={onSubmit}
+            method="POST"
+            action="#"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void onSubmit(e);
+            }}
             noValidate
             className="space-y-4 rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200"
           >

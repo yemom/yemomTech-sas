@@ -13,6 +13,7 @@ import {
   Input,
   PageLoader,
 } from "@/components/ui";
+import { API_BASE } from "@/lib/api/api-base";
 import { errorMessage } from "@/lib/api/client";
 import {
   useAddLeadActivity,
@@ -729,7 +730,7 @@ function EmbedFormModal({
   const [copied, setCopied] = useState(false);
 
   const snippet = `<!-- BizGrow Automated Lead Capture Widget -->
-<form action="http://localhost:8080/api/v1/public/leads/${orgSlug}" method="POST" style="max-width: 400px; font-family: sans-serif; display: flex; flex-direction: column; gap: 10px;">
+<form action="${API_BASE}/public/leads/${orgSlug}" method="POST" style="max-width: 400px; font-family: sans-serif; display: flex; flex-direction: column; gap: 10px;">
   <!-- Anti-bot honeypot field: real visitors do not see or fill this -->
   <input type="text" name="honeypot" style="display:none !important;" tabindex="-1" autocomplete="off" />
   
