@@ -517,6 +517,47 @@ and the restore drill used an isolated scratch database that it dropped again.
 5. **Activate the release gate** — the image jobs now require the tests, the
    browser suite and the dependency scan to pass before an image is
    published; confirm that the registry policy matches.
+6. **Configure the `NEXT_PUBLIC_API_BASE_URL` repository variable** — the
+   frontend image job now refuses to publish an image without it
+   (commit `fd62e64`).
+
+---
+
+## 13a. Follow-up cycle: authentication hardening (commit `fd62e64`)
+
+A dedicated authentication audit re-verified the whole auth surface and
+closed the remaining gap.
+
+**Already correct (re-verified, unchanged):** both forms are client
+components with React Hook Form + zod; submit handlers are attached; the
+buttons are `type="submit"`; navigation has a single owner
+(AuthProvider); field-level and callout errors render; loading states
+prevent duplicate submissions; credentials never reach a URL; the backend
+model (stateless bearer + HttpOnly refresh cookie scoped to
+`/api/v1/auth`, double-submit CSRF on refresh/logout, exact-origin
+credentialed CORS, login throttling) needed no changes.
+
+**Fixed — production could silently talk to localhost:**
+`NEXT_PUBLIC_API_BASE_URL` had fallbacks in three places (`client.ts`,
+`next.config.ts`, the reports page) plus the Dockerfile default. Now a
+single resolver (`src/lib/api/api-base.ts`) validates the value and makes
+it **required for production builds**: `next build` fails with an explicit
+message when it is unset (verified: exit 1), development keeps a loud
+fallback, and `frontend.Dockerfile` fails the image build before
+`npm run build` when the argument is missing (verified: exit 1 with the
+message in the log). CI documents the required repository variable.
+
+**Fixed en route:** the reports-page CSV export used `window.open`, which
+cannot send a bearer token — the button opened a 401 page. It now
+downloads through the authenticated API client with error and loading
+states.
+
+**Proven — the submit contract (network level, Playwright):** Sign in
+issues exactly one `fetch` `POST {API_BASE}/auth/login`; Create account
+issues exactly one `fetch` `POST {API_BASE}/auth/register`; no document
+navigation occurs and no credential appears in any URL; registration
+redirects to `/onboarding` and login to `/workspace` (44/44 executions,
+including the pre-existing 40).
 
 ---
 
@@ -534,15 +575,17 @@ Every automated gate in this repository passes:
 
 - 310 backend unit tests, 30 backend integration tests against real
   PostgreSQL and Redis — **340, zero failures**;
-- 25 frontend unit tests, typecheck, lint and the production build — all
+- 37 frontend unit tests, typecheck, lint and the production build — all
   green;
-- 40 browser executions (20 real scenarios × Chrome and Chromium) against a
+- 44 browser executions (22 real scenarios × Chrome and Chromium) against a
   real backend and a real database — **all green**;
 - the Docker stack builds, starts and reports healthy;
 - the database backup/restore drill passes;
 - the multi-instance Redis failure drill passes;
 - the load harness passes (354 req/s, 0% errors locally);
-- the degraded-control metric and the CI dependency gates are in place.
+- the degraded-control metric and the CI dependency gates are in place;
+- a production build/image without a real API URL now **fails the build**
+  instead of silently targeting localhost (§13a).
 
 The code is in a state that can be deployed to staging. It cannot honestly be
 called **PRODUCTION READY**, because the two things that only a real
@@ -553,4 +596,5 @@ the mistake this report was written to correct.
 
 ---
 
-*Verification performed 15–16 November 2026 against commit `28b053e`.*
+*Verification performed 15–17 November 2026 against commits `28b053e`
+(six follow-up actions) and `fd62e64` (authentication hardening).*
