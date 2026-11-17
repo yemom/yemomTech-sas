@@ -99,6 +99,45 @@ grep -rl "api.yourdomain.com/api/v1" .next/static/chunks/ | head
 Never commit real values; `.env` is gitignored and `NEXT_PUBLIC_*` values
 are public by design (no secrets there).
 
+## Staging deployment (docker-compose.staging.yml)
+
+`docker-compose.staging.yml` runs the exact production topology on any
+Docker host: a **prod-profile** backend (secure cookies, `SameSite=None`,
+exact CORS, springdoc off), the frontend **built with the public API URL
+baked in**, its own Postgres/Redis (never published to the host), and a
+Caddy TLS proxy in front of both app and API. All secrets are required
+(`:?` aborts — no development defaults to leak).
+
+```bash
+cp .env.staging.example .env.staging   # fill in generated secrets
+docker compose -f docker-compose.staging.yml --env-file .env.staging up -d --build
+```
+
+**Without a public domain (rehearsal):** Caddy's `tls internal` issues a
+self-signed CA. Export the CA and use it — TLS chain and hostname are
+still validated, only revocation is skipped (an internal CA has none):
+
+```bash
+docker exec <project>-caddy-1 cat /data/caddy/pki/authorities/local/root.crt  > root.crt
+docker exec <project>-caddy-1 cat /data/caddy/pki/authorities/local/intermediate.crt >> root.crt
+
+# raw-HTTP auth audit (22 checks) against the HTTPS staging stack:
+AUDIT_CURL_EXTRA="--cacert root.crt --ssl-no-revoke" \
+  bash infrastructure/scripts/staging-auth-audit.sh https://localhost:8443/api/v1
+
+# browser suite (curl on Windows/schannel needs --ssl-no-revoke):
+E2E_BASE_URL=https://localhost:4443 \
+  E2E_API_BASE_URL=https://localhost:8443/api/v1 \
+  E2E_IGNORE_TLS_ERRORS=1 CI=true npx playwright test --project=chromium
+```
+
+**With a real staging domain:** point `STAGING_APP_HOST`/`STAGING_API_HOST`
+at the public names, open ports 80/443, and delete the `tls internal`
+lines in `infrastructure/docker/Caddyfile.staging` — Caddy then obtains
+public certificates automatically via ACME. No other change is needed;
+the cookie attributes (`Secure`, `SameSite=None`) are already the
+production defaults.
+
 ## Startup validation (what the app refuses to run with)
 
 `StartupValidator` + profile rules fail fast on:

@@ -21,6 +21,8 @@ class StartupValidatorTest {
     private static final String REAL_SECRET =
             "a-production-grade-jwt-secret-value-with-plenty-of-entropy-0123456789";
     private static final String DEV_ENCRYPTION_KEY = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
+    /** The key inlined in the development docker-compose.yml. */
+    private static final String COMPOSE_DEV_ENCRYPTION_KEY = "EydsM2kgwpuNGxgEPhOGI50mdGFXRw3HgzUVqMKYLiE=";
     private static final String DEV_JWT_SECRET =
             "dev_only_secret_do_not_use_in_production_0a1b2c3d4e5f6789abcdef";
     /** A real, non-default AES key: exactly 32 bytes, Base64-encoded. */
@@ -48,6 +50,23 @@ class StartupValidatorTest {
         assertThatThrownBy(() -> validator(REAL_SECRET, DEV_ENCRYPTION_KEY, "prod").validate())
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("publicly known development default key");
+    }
+
+    @Test
+    @DisplayName("prod profile also rejects the dev docker-compose encryption key")
+    void prodProfileRejectsComposeDevEncryptionKey() {
+        // The key inlined in the development docker-compose.yml is public
+        // (it ships in the repository), so a strict profile must refuse it.
+        assertThatThrownBy(() -> validator(REAL_SECRET, COMPOSE_DEV_ENCRYPTION_KEY, "prod").validate())
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("publicly known development default key");
+    }
+
+    @Test
+    @DisplayName("dev profile tolerates the dev docker-compose encryption key")
+    void devProfileAllowsComposeDevEncryptionKey() {
+        assertThatCode(() -> validator(DEV_JWT_SECRET, COMPOSE_DEV_ENCRYPTION_KEY, "dev").validate())
+                .doesNotThrowAnyException();
     }
 
     @Test

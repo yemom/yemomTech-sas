@@ -23,7 +23,15 @@ import java.util.Locale;
 public class StartupValidator {
 
     private static final int MIN_SECRET_BYTES = 32;
-    private static final String KNOWN_DEV_ENCRYPTION_KEY = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
+    /**
+     * Development-only AES keys that must never reach a strict profile. This
+     * includes the key inlined in the development docker-compose.yml (its
+     * value is public in the repository, therefore worthless as a secret).
+     */
+    private static final java.util.Set<String> KNOWN_DEV_ENCRYPTION_KEYS = java.util.Set.of(
+            "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
+            "EydsM2kgwpuNGxgEPhOGI50mdGFXRw3HgzUVqMKYLiE="
+    );
 
     private final AppProperties properties;
     private final EncryptionProperties encryptionProperties;
@@ -103,7 +111,7 @@ public class StartupValidator {
             fail("Encryption key is not valid Base64: " + e.getMessage());
         }
 
-        if (!lenient && KNOWN_DEV_ENCRYPTION_KEY.equals(encKey)) {
+        if (!lenient && KNOWN_DEV_ENCRYPTION_KEYS.contains(encKey)) {
             fail("ENCRYPTION_KEY is using the publicly known development default key! Generate a secure production key.");
         }
 

@@ -17,6 +17,17 @@ PASSWORD="Correct-Horse-9!"
 EMAIL="audit-$(date +%s)@example.et"
 JAR="$(mktemp)"
 
+# Extra curl options, e.g. a CA bundle for an HTTPS rehearsal with an
+# internal (self-signed) CA:
+#   AUDIT_CURL_EXTRA="--cacert staging-root.crt" bash staging-auth-audit.sh https://localhost:8443/api/v1
+CURL_EXTRA=()
+if [[ -n "${AUDIT_CURL_EXTRA:-}" ]]; then
+  read -ra CURL_EXTRA <<< "$AUDIT_CURL_EXTRA"
+fi
+# Wrap curl so every call below picks the extra options up; `command curl`
+# reaches the real binary (this function does not recurse).
+curl() { command curl "${CURL_EXTRA[@]}" "$@"; }
+
 pass=0; fail=0
 check() { # check NAME EXPECTED ACTUAL
   if [[ "$2" == "$3" ]]; then

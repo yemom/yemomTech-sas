@@ -1,0 +1,29 @@
+# =============================================================
+# YemomBizGrow staging — TLS-terminating reverse proxy
+#
+# Hosts come from the environment (.env.staging):
+#   STAGING_APP_HOST  e.g. "https://app.staging.yemomtech.et:4443"
+#   STAGING_API_HOST  e.g. "https://api.staging.yemomtech.et:8443"
+#
+# `tls internal`: Caddy issues its own CA-signed certificate. This is
+# correct ONLY for a rehearsal without a public domain (self-signed,
+# clients must trust the exported root CA). On a real staging domain
+# reachable from the internet, DELETE the `tls internal` lines — Caddy
+# then obtains public certificates automatically via ACME.
+#
+# admin off: the Caddy admin endpoint is disabled; nothing to manage
+# over HTTP on a staging box.
+# =============================================================
+{
+	admin off
+}
+
+{$STAGING_APP_HOST} {
+	tls internal
+	reverse_proxy frontend:3000
+}
+
+{$STAGING_API_HOST} {
+	tls internal
+	reverse_proxy backend:8080
+}

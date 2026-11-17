@@ -63,6 +63,9 @@ services:
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3001}
       CHAPA_SECRET_KEY: ${CHAPA_SECRET_KEY:-}
       CHAPA_WEBHOOK_SECRET: ${CHAPA_WEBHOOK_SECRET:-}
+      # DEV-ONLY AES key. It is public (committed here) and useless as a
+      # secret; StartupValidator refuses it in any strict profile. Production
+      # never uses this file — secrets come from the platform's store.
       ENCRYPTION_KEY: EydsM2kgwpuNGxgEPhOGI50mdGFXRw3HgzUVqMKYLiE=
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
@@ -106,6 +109,9 @@ services:
       JWT_SECRET: ${JWT_SECRET:-dev_only_secret_not_for_production_use_0123456789abcdef}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:3001,http://localhost:3101}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3001}
+      # DEV-ONLY AES key. It is public (committed here) and useless as a
+      # secret; StartupValidator refuses it in any strict profile. Production
+      # never uses this file — secrets come from the platform's store.
       ENCRYPTION_KEY: EydsM2kgwpuNGxgEPhOGI50mdGFXRw3HgzUVqMKYLiE=
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}

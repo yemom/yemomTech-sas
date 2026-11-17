@@ -45,6 +45,10 @@ export default defineConfig({
   },
   use: {
     baseURL: process.env.E2E_BASE_URL ?? "http://localhost:3101",
+    // Staging rehearsals behind a self-signed internal CA (see
+    // docker-compose.staging.yml) set E2E_IGNORE_TLS_ERRORS=1; CI and the
+    // default localhost run leave TLS validation ON.
+    ignoreHTTPSErrors: !!process.env.E2E_IGNORE_TLS_ERRORS,
     trace: "on-first-retry",
     screenshot: "only-on-failure",
     video: "retain-on-failure",
