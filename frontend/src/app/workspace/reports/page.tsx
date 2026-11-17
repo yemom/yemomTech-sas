@@ -2,7 +2,9 @@
 
 import { useAuth } from "@/lib/auth/auth-context";
 import { useComprehensiveReport } from "@/lib/api/hooks";
+import { api, errorMessage } from "@/lib/api/client";
 import { Button, EmptyState, ErrorCallout } from "@/components/ui";
+import { useState } from "react";
 
 function formatEtb(value?: number): string {
   if (value === undefined || value === null) return "ETB 0.00";
@@ -18,10 +20,31 @@ export default function ReportsPage() {
 
   const { data: report, isLoading, error, refetch } = useComprehensiveReport(orgId);
 
-  const handleDownloadCsv = () => {
-    const apiBase =
-      process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api/v1";
-    window.open(`${apiBase}/organizations/${orgId}/reports/export/csv`, "_blank");
+  // The export endpoint requires the bearer token (CurrentUser.require()), so
+  // the CSV must be fetched through the API client and saved as a blob — a
+  // window.open() cannot send an Authorization header and opened a 401 page.
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [isDownloading, setIsDownloading] = useState(false);
+
+  const handleDownloadCsv = async () => {
+    if (!orgId) return;
+    setIsDownloading(true);
+    setDownloadError(null);
+    try {
+      const blob = await api.blob(`/organizations/${orgId}/reports/export/csv`);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `yemombizgrow-report-${orgId}.csv`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (downloadFailure) {
+      setDownloadError(errorMessage(downloadFailure));
+    } finally {
+      setIsDownloading(false);
+    }
   };
 
   return (
@@ -40,11 +63,14 @@ export default function ReportsPage() {
           <Button variant="secondary" onClick={() => void refetch()}>
             ↻ Refresh
           </Button>
-          <Button onClick={handleDownloadCsv}>↓ Download CSV Report</Button>
+          <Button onClick={() => void handleDownloadCsv()} disabled={isDownloading}>
+            {isDownloading ? "Preparing…" : "↓ Download CSV Report"}
+          </Button>
         </div>
       </div>
 
       {error && <ErrorCallout message={(error as Error).message} />}
+      {downloadError && <ErrorCallout message={downloadError} />}
 
       {isLoading ? (
         <div className="py-16 text-center text-sm text-slate-500">

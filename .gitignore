@@ -56,3 +56,4 @@ backend/hs_err_pid*
 
 # ---- Docker local data ----
 infrastructure/docker/data/
+docker-compose.override.yml

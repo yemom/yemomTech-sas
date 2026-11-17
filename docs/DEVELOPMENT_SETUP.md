@@ -45,6 +45,12 @@ in `.env`, `.env.example`, `frontend/.env.example`, `frontend/next.config.ts`
 use the default ports (5432/6379/8080/3000), change them consistently in
 `.env` **and** the run commands.
 
+`NEXT_PUBLIC_API_BASE_URL` has a single development fallback in
+`frontend/src/lib/api/api-base.ts` (http://localhost:8080/api/v1, with a
+console warning when used). In a production build the variable is
+**required** — the build fails without it, so localhost can never be baked
+into a deployed bundle by accident.
+
 ## First-time setup
 
 ```powershell

@@ -4,18 +4,13 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   // Enable standalone output for Docker deployment (copies only needed files)
   output: "standalone",
-  // The API base URL is the only runtime configuration the browser needs;
-  // it must be a NEXT_PUBLIC_* variable (bundled, never a secret).
-  //
-  // The fallback MUST match the fallback in src/lib/api/client.ts and the
-  // local backend port documented in docker-compose.yml (8080). A mismatched
-  // fallback produces a frontend that boots cleanly but talks to the wrong
-  // backend — the exact "confusing behaviour" this value used to cause
-  // (it pointed at 8082 while everything else used 8080).
-  env: {
-    NEXT_PUBLIC_API_BASE_URL:
-      process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api/v1",
-  },
+  // The API base URL is a NEXT_PUBLIC_* variable and is inlined into the
+  // browser bundle at build time straight from the build environment — no
+  // `env` block is needed, and none may declare a fallback: a production
+  // build without NEXT_PUBLIC_API_BASE_URL must fail loudly (it does, in
+  // src/lib/api/api-base.ts), never silently bake localhost into a deployed
+  // bundle. Development gets the localhost fallback with a console warning
+  // from the same module.
   // Keep the refresh cookie working: the browser sends it cross-origin only
   // when fetch opts in with credentials, and CORS must echo the exact origin.
   async headers() {

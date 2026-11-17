@@ -379,6 +379,10 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # REQUIRED: set this repository variable to the public backend URL
+          # (e.g. https://api.example.com/api/v1). It is baked into the browser
+          # bundle at build time; if it is unset the Dockerfile fails the build
+          # instead of silently baking localhost into a published image.
           build-args: |
             NEXT_PUBLIC_API_BASE_URL=${{ vars.NEXT_PUBLIC_API_BASE_URL }}
           cache-from: type=gha

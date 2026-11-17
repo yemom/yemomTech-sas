@@ -25,9 +25,23 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY frontend/ .
 
-# Build-time env vars (not secrets — bundled into browser JS)
-ARG NEXT_PUBLIC_API_BASE_URL=http://localhost:8080/api/v1
+# Build-time env var (not a secret — it is bundled into browser JS by Next).
+# It is REQUIRED: NEXT_PUBLIC_* values are baked into the bundle at build
+# time, so a production image without a real backend URL cannot be repaired
+# by setting the variable at runtime. An empty value fails the build here
+# with an explicit message, before npm run build gets a chance to produce a
+# silently-broken frontend. The local compose stack passes the localhost
+# default itself (see docker-compose.yml).
+ARG NEXT_PUBLIC_API_BASE_URL=
 ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
+
+RUN if [ -z "$NEXT_PUBLIC_API_BASE_URL" ]; then \
+      echo >&2 "ERROR: the NEXT_PUBLIC_API_BASE_URL build argument is required."; \
+      echo >&2 "  Production: docker build --build-arg NEXT_PUBLIC_API_BASE_URL=https://<backend-host>/api/v1 ..."; \
+      echo >&2 "  Local compose: it passes http://localhost:8080/api/v1 automatically."; \
+      echo >&2 "  The value is baked into the JS bundle at build time — rebuild the image after changing it."; \
+      exit 1; \
+    fi
 
 # Disable telemetry and enable standalone output
 ENV NEXT_TELEMETRY_DISABLED=1

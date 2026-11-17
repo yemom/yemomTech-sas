@@ -17,6 +17,9 @@ import { expect, test, type Page } from "@playwright/test";
 
 const PASSWORD = "Correct-Horse-9!";
 
+/** Same origin the frontend fetches from (see infrastructure/docker and CI). */
+const API_BASE = process.env.E2E_API_BASE_URL ?? "http://localhost:8080/api/v1";
+
 function uniqueEmail(prefix: string): string {
   return `e2e-${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.et`;
 }
@@ -234,4 +237,108 @@ test("logout terminates the session and protected routes reject the visitor", as
   // Even a direct reload of a protected page must not restore the session.
   await page.goto("/workspace/websites");
   await expect(page).toHaveURL(/\/login/);
+});
+
+/**
+ * The original defect behind "clicking Sign in does nothing" was the form
+ * submitting natively as a document GET (`/login?email=...`), which exposed
+ * the credentials in the URL. These tests pin the contract at the network
+ * layer: the buttons must issue fetch POSTs to the API and no document
+ * navigation may ever carry credentials.
+ */
+test("sign-in issues a fetch POST to the API, never a document navigation with credentials", async ({ page }) => {
+  test.setTimeout(90_000);
+  const email = uniqueEmail("route-net-login");
+
+  /** Document navigations observed after the initial page load. */
+  const documentNavigations: string[] = [];
+  /** Requests seen against the auth endpoints. */
+  const loginRequests: { method: string; url: string; type: string }[] = [];
+
+  page.on("request", (request) => {
+    if (request.resourceType() === "document") {
+      documentNavigations.push(`${request.method()} ${request.url()}`);
+    }
+    if (request.url().includes("/auth/login")) {
+      loginRequests.push({
+        method: request.method(),
+        url: request.url(),
+        type: request.resourceType(),
+      });
+    }
+  });
+
+  await page.goto("/login");
+  documentNavigations.length = 0; // ignore the deliberate navigation to /login
+
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Password").fill(PASSWORD);
+  await page.getByRole("button", { name: "Sign in" }).click();
+
+  // The address is not registered, so the backend answers 401 — the point is
+  // the request shape, not a successful session.
+  await expect(page.getByText("Incorrect email or password.")).toBeVisible();
+
+  // Exactly one POST, sent as a fetch (not a document), to the API base the
+  // deployment configures.
+  expect(loginRequests).toHaveLength(1);
+  const [loginRequest] = loginRequests;
+  expect(loginRequest?.method).toBe("POST");
+  expect(loginRequest?.type).toBe("fetch");
+  expect(loginRequest?.url).toBe(`${API_BASE}/auth/login`);
+
+  // No document navigation happened after the click, and no credential ever
+  // reached a URL.
+  expect(documentNavigations).toEqual([]);
+  for (const navigation of [...documentNavigations, ...loginRequests.map((r) => r.url)]) {
+    expect(navigation).not.toContain("email=");
+    expect(navigation).not.toContain("password=");
+  }
+});
+
+test("create-account issues a fetch POST to the API, never a document navigation with credentials", async ({ page }) => {
+  test.setTimeout(90_000);
+  const email = uniqueEmail("route-net-register");
+
+  const documentNavigations: string[] = [];
+  const registerRequests: { method: string; url: string; type: string }[] = [];
+
+  page.on("request", (request) => {
+    if (request.resourceType() === "document") {
+      documentNavigations.push(`${request.method()} ${request.url()}`);
+    }
+    if (request.url().includes("/auth/register")) {
+      registerRequests.push({
+        method: request.method(),
+        url: request.url(),
+        type: request.resourceType(),
+      });
+    }
+  });
+
+  await page.goto("/register");
+  documentNavigations.length = 0;
+
+  await page.getByLabel("First name").fill("Network");
+  await page.getByLabel("Last name").fill("Contract");
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Password").fill(PASSWORD);
+  await page.getByRole("button", { name: "Create account" }).click();
+
+  // Registration succeeds and the provider navigates client-side.
+  await expect(page).toHaveURL(/\/onboarding$/, { timeout: 20_000 });
+
+  expect(registerRequests).toHaveLength(1);
+  const [registerRequest] = registerRequests;
+  expect(registerRequest?.method).toBe("POST");
+  expect(registerRequest?.type).toBe("fetch");
+  expect(registerRequest?.url).toBe(`${API_BASE}/auth/register`);
+
+  // The credentials must never appear in any URL, and the only navigation
+  // after the click is the client-side transition to /onboarding.
+  for (const navigation of documentNavigations) {
+    expect(navigation).not.toContain("email=");
+    expect(navigation).not.toContain("password=");
+    expect(navigation).not.toContain("/auth/register");
+  }
 });

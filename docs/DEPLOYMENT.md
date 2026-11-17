@@ -63,6 +63,39 @@ default in base `application.yml`:
 | `JWT_ACCESS_EXPIRATION_SECONDS` / `JWT_REFRESH_EXPIRATION_DAYS` | `900` / `30` defaults are sane |
 | `APP_PORT` | `8080` (or the platform's `$PORT`) |
 
+### Frontend build requirement: `NEXT_PUBLIC_API_BASE_URL`
+
+`NEXT_PUBLIC_API_BASE_URL` (e.g. `https://api.yourdomain.com/api/v1`) is a
+**build-time** variable: Next.js bakes it into the browser bundle when
+`next build` runs. Setting it in the hosting environment alone does **not**
+change an already-built frontend — after changing it, rebuild and redeploy.
+
+The build refuses to proceed without it (no silent localhost fallback):
+
+```bash
+# production build — fails with an explicit error if the variable is unset
+NEXT_PUBLIC_API_BASE_URL="https://api.yourdomain.com/api/v1" npm run build
+
+# production Docker image — the same rule, enforced before the build runs
+docker build -f infrastructure/docker/frontend.Dockerfile \
+  --build-arg NEXT_PUBLIC_API_BASE_URL="https://api.yourdomain.com/api/v1" .
+
+# CI publishes the image only when the repository variable
+# NEXT_PUBLIC_API_BASE_URL is configured (Settings → Secrets and variables → Variables)
+```
+
+In CI, the frontend image job passes `vars.NEXT_PUBLIC_API_BASE_URL`; if the
+repository variable is unset, the Docker build fails with an explicit
+message instead of publishing an image that talks to `localhost`. The local
+compose stack passes `http://localhost:8080/api/v1` itself, so local
+development is unaffected.
+
+Verify what was actually baked into a build:
+
+```bash
+grep -rl "api.yourdomain.com/api/v1" .next/static/chunks/ | head
+```
+
 Never commit real values; `.env` is gitignored and `NEXT_PUBLIC_*` values
 are public by design (no secrets there).
 
@@ -435,6 +468,10 @@ only), so it needs no backup — see the degradation notes in ADR-0004.
 - [ ] `actuator` exposure limited to `health,info` (already default).
 - [ ] Backups: Postgres PITR/automated snapshots verified with a restore
       drill (`postgres-backup.sh verify`).
+- [ ] Frontend built with `NEXT_PUBLIC_API_BASE_URL` set to the public
+      backend URL — verified by grepping the built bundle (see "Frontend
+      build requirement" above); a localhost URL in a production bundle is a
+      release blocker.
 - [ ] `.env` never deployed; secrets injected by the platform.
 
 ## Rollback

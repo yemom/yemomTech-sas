@@ -13,10 +13,8 @@
  *   via the Web Locks API so two tabs cannot rotate the same cookie twice),
  *   then the original request is retried once.
  */
+import { API_BASE } from "./api-base";
 import type { AuthSession, ErrorBody } from "./types";
-
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api/v1";
 
 const CSRF_STORAGE_KEY = "YemomBizGrow_csrf";
 
@@ -223,7 +221,12 @@ function defaultMessageFor(status: number): string {
   return "Request failed. Please try again.";
 }
 
-async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+/**
+ * Send a request through the shared session state, refreshing once on 401.
+ * Both the JSON `request()` and the binary `blob()` path use this, so the
+ * auth logic exists exactly once.
+ */
+async function sendWithAuth(path: string, options: RequestOptions = {}): Promise<Response> {
   const { method = "GET", body, auth = true } = options;
 
   const send = (): Promise<Response> => {
@@ -250,6 +253,12 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     }
   }
 
+  return response;
+}
+
+async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const response = await sendWithAuth(path, options);
+
   if (!response.ok) throw await toApiError(response);
   if (response.status === 204) return undefined as T;
   const text = await response.text();
@@ -262,6 +271,15 @@ export const api = {
   put: <T>(path: string, body?: unknown) => request<T>(path, { method: "PUT", body }),
   patch: <T>(path: string, body?: unknown) => request<T>(path, { method: "PATCH", body }),
   delete: <T>(path: string) => request<T>(path, { method: "DELETE" }),
+  /**
+   * Binary download (e.g. the CSV report export) through the same
+   * authenticated path — a `window.open` cannot send a bearer token.
+   */
+  blob: async (path: string): Promise<Blob> => {
+    const response = await sendWithAuth(path);
+    if (!response.ok) throw await toApiError(response);
+    return response.blob();
+  },
   /** Credential endpoints: no bearer, no 401-retry (a 401 here is a real error). */
   public: <T>(path: string, body: unknown) =>
     request<T>(path, { method: "POST", body, auth: false }),

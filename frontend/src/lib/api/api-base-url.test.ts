@@ -6,14 +6,17 @@ import { describe, expect, it } from "vitest";
 /**
  * Guards the API base URL configuration.
  *
- * <p>The frontend used to carry two different local fallbacks: {@code 8082} in
- * {@code next.config.ts} and {@code 8080} in the API client. A developer who
- * started the app without an explicit {@code NEXT_PUBLIC_API_BASE_URL} therefore
- * got a frontend that booted cleanly and then talked to a backend that was not
- * running — a failure that looks like an application bug and is not one.</p>
+ * <p>History, in order: the frontend used to carry two different local
+ * fallbacks (8082 and 8080), then several files each carried the same 8080
+ * fallback. Both shapes are dangerous: the first boots cleanly and talks to
+ * a backend that is not running; the second makes "production must never
+ * silently use localhost" unenforceable, because the fallback lives in
+ * too many places to police.</p>
  *
- * <p>This test reads the real configuration files and asserts they all agree
- * on one canonical URL, so the inconsistency cannot come back silently.</p>
+ * <p>The architecture now is: exactly one module
+ * (`src/lib/api/api-base.ts`) may declare a local fallback — and only for
+ * development; a production build without `NEXT_PUBLIC_API_BASE_URL` fails
+ * the build. This test reads the real files and pins that architecture.</p>
  */
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -27,66 +30,63 @@ function read(...segments: string[]): string {
   return readFileSync(resolve(...segments), "utf-8");
 }
 
-/** Every fallback/default the repository declares for the API base URL. */
-function declaredApiBaseUrls(): { source: string; url: string }[] {
-  const nextConfig = read(FRONTEND_ROOT, "next.config.ts");
-  const apiClient = read(FRONTEND_ROOT, "src", "lib", "api", "client.ts");
-  const frontendEnvExample = read(FRONTEND_ROOT, ".env.example");
-  const rootEnvExample = read(REPO_ROOT, ".env.example");
-  const compose = read(REPO_ROOT, "docker-compose.yml");
-
-  return [
-    {
-      source: "next.config.ts",
-      url: nextConfig.match(/NEXT_PUBLIC_API_BASE_URL:\s*\n?\s*process\.env\.NEXT_PUBLIC_API_BASE_URL\s*\?\?\s*"([^"]+)"/)?.[1]
-        ?? "",
-    },
-    {
-      source: "src/lib/api/client.ts",
-      url: apiClient.match(/NEXT_PUBLIC_API_BASE_URL\s*\?\?\s*"([^"]+)"/)?.[1] ?? "",
-    },
-    {
-      source: "frontend/.env.example",
-      url: frontendEnvExample.match(/NEXT_PUBLIC_API_BASE_URL=(.+)/)?.[1]?.trim() ?? "",
-    },
-    {
-      source: ".env.example",
-      url: rootEnvExample.match(/NEXT_PUBLIC_API_BASE_URL=(.+)/)?.[1]?.trim() ?? "",
-    },
-    {
-      source: "docker-compose.yml",
-      url: compose.match(/NEXT_PUBLIC_API_BASE_URL:-\s*(http[^}\s]+)/)?.[1] ?? "",
-    },
-  ];
-}
-
 describe("API base URL configuration", () => {
-  it("declares a fallback in every configuration file", () => {
-    for (const entry of declaredApiBaseUrls()) {
-      expect(entry.url, `${entry.source} must declare an API base URL`).not.toBe("");
-    }
+  it("declares the canonical dev fallback in exactly one place: api-base.ts", () => {
+    const apiBase = read(FRONTEND_ROOT, "src", "lib", "api", "api-base.ts");
+    expect(apiBase).toContain(`const DEV_FALLBACK = "${CANONICAL_API_BASE_URL}"`);
   });
 
-  it("uses one canonical local backend URL everywhere", () => {
-    for (const entry of declaredApiBaseUrls()) {
-      expect(entry.url, `${entry.source} must point at the canonical backend`).toBe(
+  it("does not let the API client or next.config declare their own fallback", () => {
+    const client = read(FRONTEND_ROOT, "src", "lib", "api", "client.ts");
+    const nextConfig = read(FRONTEND_ROOT, "next.config.ts");
+    const reportsPage = read(FRONTEND_ROOT, "src", "app", "workspace", "reports", "page.tsx");
+
+    for (const [source, content] of [
+      ["src/lib/api/client.ts", client],
+      ["next.config.ts", nextConfig],
+      ["src/app/workspace/reports/page.tsx", reportsPage],
+    ] as const) {
+      expect(content, `${source} must not hardcode the backend URL`).not.toContain(
         CANONICAL_API_BASE_URL,
       );
     }
+    // next.config.ts must not inject a fallback through the `env` block —
+    // that would silently defeat the production build guard in api-base.ts.
+    expect(nextConfig).not.toMatch(
+      /NEXT_PUBLIC_API_BASE_URL\s*:\s*process\.env\.NEXT_PUBLIC_API_BASE_URL\s*\?\?/,
+    );
+  });
+
+  it("keeps the development-only fallback in the development config files", () => {
+    const frontendEnvExample = read(FRONTEND_ROOT, ".env.example");
+    const rootEnvExample = read(REPO_ROOT, ".env.example");
+    const compose = read(REPO_ROOT, "docker-compose.yml");
+
+    expect(frontendEnvExample).toContain(`NEXT_PUBLIC_API_BASE_URL=${CANONICAL_API_BASE_URL}`);
+    expect(rootEnvExample).toContain(`NEXT_PUBLIC_API_BASE_URL=${CANONICAL_API_BASE_URL}`);
+    // The compose stack is the local development stack; it passes the
+    // localhost default itself, so the Dockerfile can require an explicit
+    // value for every build.
+    expect(compose).toMatch(/NEXT_PUBLIC_API_BASE_URL:-http:\/\/localhost:8080\/api\/v1/);
+  });
+
+  it("requires an explicit API URL in the production Docker build", () => {
+    const dockerfile = read(REPO_ROOT, "infrastructure", "docker", "frontend.Dockerfile");
+    // No silent default: the ARG must default to empty and the build must
+    // fail with an explicit message when it is not provided.
+    expect(dockerfile).toMatch(/^ARG NEXT_PUBLIC_API_BASE_URL=\s*$/m);
+    expect(dockerfile).toMatch(/if \[ -z "\$NEXT_PUBLIC_API_BASE_URL" \]/);
   });
 
   it("never points at a stale backend port", () => {
-    for (const entry of declaredApiBaseUrls()) {
-      expect(entry.url, `${entry.source} must not use the retired port 8082`).not.toContain(
-        ":8082",
-      );
+    const files = [
+      read(FRONTEND_ROOT, "src", "lib", "api", "api-base.ts"),
+      read(FRONTEND_ROOT, "src", "lib", "api", "client.ts"),
+      read(FRONTEND_ROOT, "next.config.ts"),
+      read(REPO_ROOT, "docker-compose.yml"),
+    ];
+    for (const content of files) {
+      expect(content, "must not use the retired port 8082").not.toContain(":8082");
     }
-  });
-
-  it("keeps the browser fallback and the bundler fallback identical", () => {
-    const declared = declaredApiBaseUrls();
-    const nextConfig = declared.find((entry) => entry.source === "next.config.ts");
-    const apiClient = declared.find((entry) => entry.source === "src/lib/api/client.ts");
-    expect(nextConfig?.url).toBe(apiClient?.url);
   });
 });
