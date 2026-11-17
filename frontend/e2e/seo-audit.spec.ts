@@ -6,8 +6,9 @@ const PASSWORD = "Correct-Horse-9!";
  * The API origin. The browser app and the API are different origins during
  * E2E (the app is served by the production build on its own port, the API by
  * the backend), so a direct API call has to target the backend explicitly.
+ * Resolved centrally — see ./api-base.ts.
  */
-const API_BASE = process.env.E2E_API_BASE_URL ?? "http://localhost:8080/api/v1";
+import { API_BASE } from "./api-base";
 
 /**
  * Website registration and the SEO audit workflow.

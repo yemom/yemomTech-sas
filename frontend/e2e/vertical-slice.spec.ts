@@ -6,7 +6,7 @@ import { expect, test } from "@playwright/test";
  * members → logout → login again.
  *
  * Requirements (see playwright.config.ts):
- * - backend on http://localhost:8080 (dev profile, expose-dev-token on)
+ * - backend on the configured API base (e2e/api-base.ts; dev default 8080)
  * - frontend dev server on http://localhost:3001
  *
  * Label selectors use non-exact matching because required fields render

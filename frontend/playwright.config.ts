@@ -4,7 +4,8 @@ import { defineConfig, devices } from "@playwright/test";
  * E2E runs against the real UI + the real backend.
  *
  * Requirements (see README / docs/DEVELOPMENT_SETUP.md):
- * - backend on http://localhost:8080 (dev profile, expose-dev-token on) and
+ * - backend reachable at the configured API base (dev default
+ *   http://localhost:8080; see e2e/api-base.ts for resolution) and
  *   CORS allowing the E2E origin (http://localhost:3101)
  * - the frontend served by a **production build** (`next build` + the
  *   standalone server) on a dedicated E2E port

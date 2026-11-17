@@ -18,7 +18,7 @@ import { expect, test, type Page } from "@playwright/test";
 const PASSWORD = "Correct-Horse-9!";
 
 /** Same origin the frontend fetches from (see infrastructure/docker and CI). */
-const API_BASE = process.env.E2E_API_BASE_URL ?? "http://localhost:8080/api/v1";
+import { API_BASE } from "./api-base";
 
 function uniqueEmail(prefix: string): string {
   return `e2e-${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.et`;
