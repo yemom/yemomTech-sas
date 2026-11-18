@@ -117,6 +117,10 @@ export function Field({ label, error, hint, required, children, htmlFor }: Field
 const INPUT_STYLES =
   "block w-full rounded-lg border-0 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-teal-600 aria-invalid:ring-rose-400 aria-invalid:focus:ring-rose-500";
 
+// Shared with PasswordInput so the toggle button gets the exact same
+// focus/error styling as every other input in the design system.
+export { INPUT_STYLES };
+
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement> & { invalid?: boolean }>(
   function Input({ invalid, className = "", ...rest }, ref) {
     return (

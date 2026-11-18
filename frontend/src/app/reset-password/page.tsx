@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Button, ErrorCallout, Field, Input, PageLoader } from "@/components/ui";
+import { PasswordInput } from "@/components/password-input";
 import { errorMessage } from "@/lib/api/client";
 import { useResetPassword } from "@/lib/api/hooks";
 import { resetPasswordSchema, type ResetPasswordInput } from "@/lib/api/schemas";
@@ -98,9 +99,8 @@ function ResetPasswordForm() {
             </Field>
 
             <Field label="New Password" error={errors.newPassword?.message} htmlFor="newPassword" required>
-              <Input
+              <PasswordInput
                 id="newPassword"
-                type="password"
                 autoComplete="new-password"
                 invalid={Boolean(errors.newPassword)}
                 {...register("newPassword")}

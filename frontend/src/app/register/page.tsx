@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Button, ErrorCallout, Field, Input } from "@/components/ui";
+import { PasswordInput } from "@/components/password-input";
 import { ApiError, errorMessage } from "@/lib/api/client";
 import { PASSWORD_RULES, registerSchema, type RegisterInput } from "@/lib/api/schemas";
 import { dashboardPath, useAuth } from "@/lib/auth/auth-context";
@@ -142,9 +143,8 @@ export default function RegisterPage() {
             hint="8-128 characters with upper, lower, digit and symbol."
             required
           >
-            <Input
+            <PasswordInput
               id="password"
-              type="password"
               autoComplete="new-password"
               invalid={Boolean(errors.password)}
               {...register("password", {

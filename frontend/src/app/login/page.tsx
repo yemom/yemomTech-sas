@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Button, ErrorCallout, Field, Input, PageLoader } from "@/components/ui";
+import { PasswordInput } from "@/components/password-input";
 import { ApiError, errorMessage } from "@/lib/api/client";
 import { loginSchema, type LoginInput } from "@/lib/api/schemas";
 import { dashboardPath, useAuth } from "@/lib/auth/auth-context";
@@ -107,9 +108,8 @@ function LoginForm() {
           </Field>
 
           <Field label="Password" error={errors.password?.message} htmlFor="password" required>
-            <Input
+            <PasswordInput
               id="password"
-              type="password"
               autoComplete="current-password"
               invalid={Boolean(errors.password)}
               {...register("password")}
