@@ -27,6 +27,17 @@ Development `docker-compose.yml` is **not** for production: it publishes
 database ports and uses dev credentials. Production runs Postgres/Redis as
 managed services with private networking and no published ports.
 
+## Deployment Environments & Tiers
+
+The platform defines four distinct deployment environments with strict boundary guarantees:
+
+| Environment | Topology & Compose File | Profile & Security Defaults | Domains & TLS | Credentials & External Integrations |
+| --- | --- | --- | --- | --- |
+| **1. Local Development** | `docker-compose.yml` (backend, frontend, postgres, redis) | `dev` profile; `expose-dev-token=true`, relaxed dev CORS, published DB ports (5432/6379) | Plain HTTP (`http://localhost:3000` / `http://localhost:8080`) | Offline providers active (Offline AI, Chapa sandbox simulation, mock Google credentials) |
+| **2. Local Production-like Staging** | `docker-compose.staging.yml` + `.env.staging` (backend, frontend, postgres, redis, Caddy proxy) | `prod` profile; strict startup validation, secure cookies (`SameSite=None; Secure`), unexposed DB ports | Local HTTPS with Caddy internal self-signed CA (`https://localhost:4443` / `https://localhost:8443`) | Test / sandbox credentials only; strict authentication & raw-HTTP audit script verification |
+| **3. Public HTTPS Staging** | `docker-compose.staging.yml` or VM with Caddy ACME | `prod` profile; public HTTPS, exact CORS origins (`staging.yemomtech.et`) | Public HTTPS via automated Let's Encrypt / ZeroSSL ACME certificates | Real Chapa test API keys, real Google OAuth test app credentials, real SMTP relay |
+| **4. Live Production** | Managed services: Vercel / Cloudflare (Frontend) + Render / K8s (Backend) + Managed Postgres 17 + Managed Redis | `prod` profile; zero dev fallbacks, strict AES-256 encryption, secret store injection | Live production HTTPS (`https://app.yemomtech.et` / `https://api.yemomtech.et`) | Live Chapa merchant credentials (Telebirr/CBE Birr), live Google OAuth verified app, production SMTP |
+
 ## Build artifacts
 
 | Component | Build | Output |

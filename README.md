@@ -800,7 +800,14 @@ The platform is designed to make digital business management more practical and 
 
 ## Deployment
 
-The project supports container-based deployment.
+The project supports container-based deployment across four distinct operational tiers:
+
+1. **Local Development:** `docker-compose.yml` with dev profile, published ports, and mock/offline providers.
+2. **Local Production-like Staging:** `docker-compose.staging.yml` with prod profile, Caddy TLS internal self-signed HTTPS, unexposed databases, and strict security validation.
+3. **Public HTTPS Staging:** Container host with automated Caddy Let's Encrypt / ACME TLS and real test provider credentials (Chapa test keys, Google OAuth sandbox).
+4. **Live Production:** Managed PostgreSQL 17 + Redis, Vercel/Cloudflare (Frontend) + Render/Kubernetes (Backend), strict secrets, and live merchant credentials.
+
+See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for full topology, environment matrix, and step-by-step procedures.
 
 ### Frontend
 
