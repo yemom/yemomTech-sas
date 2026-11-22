@@ -30,6 +30,19 @@ frontend/*-results.txt
 # ---- Database backups (never commit) ----
 backups/
 
+# ---- Local database clusters and data directories (never commit) ----
+.pgdata/
+.e2e-pgdata/
+*.pgdata/
+*.pgdata
+*.e2e-pgdata
+.e2e-pg.log
+
+# ---- Scratch files & temporary artifacts ----
+scratch/
+temp.txt
+query
+
 # ---- Environment / secrets ----
 .env
 .env.*
