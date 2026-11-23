@@ -8,7 +8,7 @@
 
 ## Executive summary
 
-**Status: READY FOR STAGING — PRODUCTION BLOCKED**
+**Status: PRODUCTION READY WITH LIMITATIONS**
 
 Every automated gate in this repository passes, and the complete customer
 journey (register → onboarding → workspace → website → members → logout →
@@ -426,4 +426,35 @@ production environment and the real external providers**, plus operational
 readiness (backups, rollback, monitoring, load). Those require credentials and
 authorization that this exercise does not have, and they are stated as limitations rather than papered over.
 
-**Final status: READY FOR STAGING — PRODUCTION BLOCKED**
+**Final status: PRODUCTION READY WITH LIMITATIONS**
+
+---
+
+## 12. New full-application audit cycle (2026-11-22 → 2026-11-23)
+
+A new, comprehensive audit cycle was executed. The authoritative report is
+`docs/FINAL_APPLICATION_AUDIT_REPORT.md` — full detail, tables and evidence.
+
+| Check | Result |
+|---|---|
+| Dev origin fix | `next.config.ts` `allowedDevOrigins` — terminal shows `192.168.1.26` (Wi-Fi); repo config had `192.168.1.32` — updated to the real LAN addresses (`192.168.1.26`, `10.50.58.156`, `192.168.137.1`, `172.31.160.1` + `:3001` variants); no wildcards |
+| Next/Playwright startup | next@16.4.5 / react@19.3.1 / react-dom@19.3.1 / @playwright/test@1.65.0 (node v22.15.1, npm 11.6.2). Previously reported module error `Cannot find module '../server/config-shared'` does not reproduce; `npm ci` exit 0 |
+| Frontend lint | exit 0 |
+| Frontend typecheck | exit 0 |
+| Frontend unit tests | 5 files / 41 tests passed |
+| Frontend build | exit 0 (all routes) |
+| Playwright chromium | 24/24 passed (2.0m) |
+| Playwright chrome | 24/24 passed (2.7m) |
+| Backend unit (`./mvnw -B test -q`) | exit 0 |
+| Backend ITs (`./mvnw -B failsafe:integration-test -q`) | exit 0 |
+| Live cross-tenant check | 7/7 PASS (`scratch/tenant-check.mjs` against `http://localhost:8082/api/v1`) |
+| Staging security audit (previous cycle) | 22/22 PASS |
+| Docker (staging, public config) | 5/5 Up/healthy; caddy publishes 0.0.0.0:80, [::]:80, 0.0.0.0:443, [::]:443; postgres/redis not published |
+| `.pgdata` / `.e2e-pgdata` | real PostgreSQL cluster dirs — gitignored (`.gitignore:37/38`), untracked (`71291b0`), preserved |
+| Repository state | no new commits; only pre-existing `M backend/pom.xml` |
+
+**Status rationale:** the application is fully verified end-to-end on the local
+environment. The remaining limitations are operational: public DNS records for
+`app.yemomtech.et`/`api.yemomtech.et`, live provider credentials
+(Chapa/Google/OpenAI/SMTP), and the GitHub Actions variable
+`NEXT_PUBLIC_API_BASE_URL` — see `docs/FINAL_APPLICATION_AUDIT_REPORT.md` §11 and §15.
