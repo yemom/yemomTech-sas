@@ -71,3 +71,7 @@ backend/hs_err_pid*
 # ---- Docker local data ----
 infrastructure/docker/data/
 docker-compose.override.yml
+
+# PostgreSQL data directories (local dev / e2e)
+.pgdata/
+.e2e-pgdata/
