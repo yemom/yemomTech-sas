@@ -248,6 +248,13 @@ jobs:
         working-directory: .
         run: node infrastructure/scripts/audit-policy.test.mjs
 
+      - name: Self-test the provider verification harness
+        # Proves environment resolution: canonical STAGING_* names, legacy
+        # aliases, placeholder detection, .env.staging loading and that
+        # secrets never appear in output.
+        working-directory: .
+        run: node infrastructure/scripts/verify-providers.test.mjs
+
       - name: Upload the dependency report
         if: always()
         uses: actions/upload-artifact@v4

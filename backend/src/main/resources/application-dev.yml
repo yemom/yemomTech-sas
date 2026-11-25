@@ -33,18 +33,14 @@ management:
   endpoints:
     web:
       exposure:
-        # The metrics endpoint is exposed in the development profile so the
-        # degraded-security-control counter (bizgrow.security.controls.degraded)
-        # can be read locally. Production keeps the surface minimal; expose it
-        # only behind an internal network or an authenticated proxy there.
         include: health,info,metrics
+  endpoint:
+    health:
+      show-details: "always"
+      probes:
+        enabled: true
   health:
     mail:
-      # Local development has no SMTP server. Without this the mail indicator
-      # fails and drags the *aggregate* health endpoint to DOWN, which makes
-      # the whole service look broken (and trips any external monitor) even
-      # though the API is fully functional. Production keeps the indicator on,
-      # because a broken mail relay there really is an incident.
       enabled: false
 
 logging:
